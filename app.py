@@ -54,7 +54,8 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
 
         with st.spinner("🧠 Procesando datos, cruzando sequía, siniestralidad, GDD y dibujando mapas..."):
             try:
-                respuesta = requests.post(API_URL, json={"pregunta": prompt_construido}, timeout=120)
+                # Modificado a 600 segundos (10 minutos) para evitar cortes prematuros en procesamiento pesado
+                respuesta = requests.post(API_URL, json={"pregunta": prompt_construido}, timeout=600)
                 datos = respuesta.json()
                 if datos.get("ok"):
                     st.success("✅ ¡Análisis Completado!")
