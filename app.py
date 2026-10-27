@@ -25,39 +25,45 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tarjetas agrupadas por Variable */
+    /* Tarjetas Compactas y Estéticas por Variable */
     .metric-card {
         background-color: #1e293b;
         border: 1px solid #334155;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .metric-card-title {
-        font-size: 15px;
+        font-size: 14px;
         font-weight: bold;
         color: #d4af37 !important;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
         border-bottom: 1px solid #334155;
-        padding-bottom: 5px;
+        padding-bottom: 4px;
         text-transform: uppercase;
     }
     .year-row {
         display: flex;
         justify-content: space-between;
-        font-size: 13px;
-        margin-bottom: 5px;
+        align-items: center;
+        font-size: 12px;
+        padding: 2px 0;
+        border-bottom: 1px dashed #1a2639;
     }
+    .year-row:last-child { border-bottom: none; }
     .year-name { color: #8b9bb4; }
     .year-val { color: #ffffff; font-weight: 600; }
+    .var-badge-pos { color: #4ade80; font-size: 11px; font-weight: 500; }
+    .var-badge-neg { color: #f87171; font-size: 11px; font-weight: 500; }
+    .var-badge-neu { color: #94a3b8; font-size: 11px; font-weight: 500; }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🌱 Dashboard Dinámico SIACON</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Generador de Reportes.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌱 Inteligencia Geoespacial SIACON</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Dashboard Dinámico y Generador de Reportes Agroclimáticos.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 2. CONEXIÓN Y CARGA DE CATÁLOGOS DESDE SUPABASE
@@ -94,7 +100,7 @@ columnas_metricas = {
 # -----------------------------------------------------------------------------
 # 3. SECCIÓN 1: FILTROS E INTERFAZ
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>1. Variables</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -136,16 +142,17 @@ elif cultivo_input:
     
     metrics_sql = ", ".join(select_metrics)
 
+    # Consulta robusta utilizando LEFT JOIN para evitar descartar registros si un catálogo viene nulo
     query = f"""
     SELECT 
         a.anio, 
-        e.nomestado as estado,
-        m.nommunicipio as municipio,
+        COALESCE(e.nomestado, 'Nacional') as estado,
+        COALESCE(m.nommunicipio, 'General') as municipio,
         {metrics_sql}
     FROM agro_cierre_municipal a
-    JOIN cat_cultivo c ON a.idcultivo = c.idcultivo
-    JOIN cat_estado e ON a.idestado = e.idestado
-    JOIN cat_municipio m ON a.idestado = m.idestado AND a.idmunicipio = m.idmunicipio
+    LEFT JOIN cat_cultivo c ON a.idcultivo = c.idcultivo
+    LEFT JOIN cat_estado e ON a.idestado = e.idestado
+    LEFT JOIN cat_municipio m ON a.idestado = m.idestado AND a.idmunicipio = m.idmunicipio
     LEFT JOIN cat_variedad v ON a.idcultivo = v.idcultivo AND a.idvariedad = v.idvariedad
     LEFT JOIN cat_ciclo ci ON a.idciclo = ci.idciclo
     LEFT JOIN cat_modalidad mo ON a.idmodalidad = mo.idmodalidad
@@ -193,7 +200,6 @@ elif cultivo_input:
                 st.markdown(f"### 📈 Evolución Temporal")
                 df_plot_line = df.groupby("anio")[cols_to_plot].sum().reset_index()
                 
-                # Gráfica adaptativa para 1 o 2 variables
                 if len(cols_to_plot) == 2:
                     fig_line = make_subplots(specs=[[{"secondary_y": True}]])
                     fig_line.add_trace(
@@ -232,19 +238,44 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Agrupado por Variable ---
-            st.markdown("### 📋 Resumen Detallado por Variable")
-            df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index()
+            # --- Resumen Compacto Agrupado por Variable con Variación % ---
+            st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
+            df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
             cols_metric_cards = st.columns(len(cols_to_plot))
             for idx, m_label in enumerate(cols_to_plot):
-                # Si es una sola columna, aseguramos que cols_metric_cards sea iterable correctamente
                 target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
                 with target_col:
                     years_html = ""
+                    val_anterior = None
+                    
                     for _, row in df_resumen.iterrows():
-                        val = row[m_label]
-                        years_html += f'<div class="year-row"><span class="year-name">Año {int(row["anio"])}:</span><span class="year-val">{val:,.2f}</span></div>'
+                        val_actual = row[m_label]
+                        anio_actual = int(row["anio"])
+                        
+                        # Cálculo del porcentaje de variación
+                        if val_anterior is not None and val_anterior != 0:
+                            var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
+                            if var_pct > 0:
+                                var_badge = f'<span class="var-badge-pos">▲ +{var_pct:.1f}%</span>'
+                            elif var_pct < 0:
+                                var_badge = f'<span class="var-badge-neg">▼ {var_pct:.1f}%</span>'
+                            else:
+                                var_badge = f'<span class="var-badge-neu">0.0%</span>'
+                        else:
+                            var_badge = f'<span class="var-badge-neu">Base</span>'
+                            
+                        val_anterior = val_actual
+                        
+                        years_html += f'''
+                            <div class="year-row">
+                                <span class="year-name">Año {anio_actual}:</span>
+                                <div>
+                                    <span class="year-val">{val_actual:,.2f}</span> 
+                                    <span style="margin-left: 5px;">{var_badge}</span>
+                                </div>
+                            </div>
+                        '''
                     
                     st.markdown(f"""
                         <div class="metric-card">
@@ -254,7 +285,7 @@ elif cultivo_input:
                     """, unsafe_allow_html=True)
                 
         else:
-            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros.")
+            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Prueba seleccionando un ciclo diferente o limpiando el filtro de municipio.")
     except Exception as e:
         st.warning(f"Error consultando la base de datos: {e}")
 
@@ -263,8 +294,8 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 # 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros adicionales y Reporte</h4>", unsafe_allow_html=True)
-st.caption("Genera mapas inmediatos o solicita el análisis.")
+st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros de Cartografía y Reporte de Inteligencia</h4>", unsafe_allow_html=True)
+st.caption("Genera mapas vectoriales inmediatos o solicita el análisis profundo con el Agente SIACON en Cloud Run.")
 
 c9, c10, c11, c12 = st.columns(4)
 with c9:
