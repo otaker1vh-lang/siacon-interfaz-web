@@ -1,8 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-import plotly.express as px
-import io
 
 # Configuración de página simulando el modo oscuro
 st.set_page_config(page_title="Inteligencia Geoespacial SIACON", page_icon="🌱", layout="wide")
@@ -139,50 +137,25 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
                     var_backend = var_map.get(variables[0], "produccion")
                     
                     # ==========================================
-                    # GRÁFICA INTERACTIVA ESTILO MEXAG
+                    # GRÁFICA DIRECTA VÍA JSON (NATIVA DE STREAMLIT)
                     # ==========================================
-                    excel_doc = next((doc for doc in documentos if ".xlsx" in doc.lower()), None)
-                    if excel_doc:
+                    json_doc = next((doc for doc in archivos if doc.lower().endswith(".json")), None)
+                    if json_doc:
                         try:
-                            # 1. Descargamos el excel temporalmente en memoria
-                            excel_bytes = requests.get(f"{BASE_FILE_URL}{excel_doc}").content
-                            df_crudos = pd.read_excel(io.BytesIO(excel_bytes), sheet_name="Datos Crudos")
+                            # 1. Obtenemos el JSON ligero
+                            datos_json = requests.get(f"{BASE_FILE_URL}{json_doc}").json()
+                            df_crudos = pd.DataFrame(datos_json)
                             
-                            # 2. Preparamos los datos para la gráfica
+                            # 2. Agrupamos los datos por año
                             if "anio" in df_crudos.columns and var_backend in df_crudos.columns:
-                                df_crudos["anio"] = df_crudos["anio"].astype(str) # Forzar año como categoría
+                                df_crudos["anio"] = df_crudos["anio"].astype(str)
+                                df_plot = df_crudos.groupby("anio")[var_backend].sum()
                                 
-                                # Agrupamos según el nivel para dibujar las líneas
-                                if "estado" in df_crudos.columns and nivel == "Estatal":
-                                    df_plot = df_crudos.groupby(["anio", "estado"])[var_backend].sum().reset_index()
-                                    color_col = "estado"
-                                else:
-                                    df_plot = df_crudos.groupby(["anio"])[var_backend].sum().reset_index()
-                                    color_col = None
-                                
-                                # 3. Dibujamos con Plotly utilizando estilo oscuro
-                                st.markdown("### 📈 Panel de Avance Agrícola (Tendencia)")
-                                fig = px.line(
-                                    df_plot, x="anio", y=var_backend, color=color_col, 
-                                    markers=True, title=f"Evolución de {variables[0]}"
-                                )
-                                fig.update_layout(
-                                    template="plotly_dark",
-                                    plot_bgcolor="#0b1325",
-                                    paper_bgcolor="#0b1325",
-                                    font=dict(color="#8b9bb4"),
-                                    title_font=dict(size=18, color="#ffffff"),
-                                    xaxis_title="Año (Ciclo Agrícola)",
-                                    yaxis_title=variables[0],
-                                    legend_title="Variación",
-                                    margin=dict(l=40, r=40, t=60, b=40)
-                                )
-                                fig.update_traces(line=dict(width=3), marker=dict(size=8))
-                                st.plotly_chart(fig, use_container_width=True)
+                                # 3. Graficamos
+                                st.markdown(f"### 📈 Panel de Avance Agrícola (Tendencia de {variables[0]})")
+                                st.line_chart(df_plot, color="#d4af37", use_container_width=True)
                         except Exception as e:
-                            st.warning(f"No se pudo renderizar la gráfica interactiva: {e}")
-
-                    st.markdown("---")
+                            st.warning(f"No se pudo renderizar la gráfica: {e}")
 
                     # ==========================================
                     # DATOS E INTELIGENCIA (DESCARGAS REALES)
@@ -206,7 +179,6 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
                                     use_container_width=True
                                 )
                             except:
-                                # Fallback por si la descarga en memoria falla
                                 st.markdown(f"**[{nombre_doc}]({doc_url})**")
 
                     with res_col2:
