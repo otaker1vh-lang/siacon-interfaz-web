@@ -56,20 +56,21 @@ def cargar_catalogos():
             ["Riego", "Temporal"]
         )
 
+lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalidades_db = cargar_catalogos()
+
+# Carga de Mapas GeoJSON en Memoria
 @st.cache_data(show_spinner=False)
 def cargar_mapas_geojson():
     try:
-        with open("estados.geojson", "r", encoding="utf-8") as f:
+        with open("geo_estados.json", "r", encoding="utf-8") as f:
             geo_estados = json.load(f)
-        with open("municipios.geojson", "r", encoding="utf-8") as f:
+        with open("geo_municipios.json", "r", encoding="utf-8") as f:
             geo_municipios = json.load(f)
         return geo_estados, geo_municipios
     except Exception as e:
         return None, None
 
-geo_estados, geo_municipios = cargar_mapas_geojson()
-
-lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalidades_db = cargar_catalogos()
+geo_estados_data, geo_municipios_data = cargar_mapas_geojson()
 
 columnas_metricas = {
     "Producción": "volumenproduccion", 
@@ -108,6 +109,9 @@ with c8:
     anios = st.slider("📅 RANGO DE AÑOS", 2015, 2025, (2018, 2025))
 
 st.markdown("---")
+
+# Inicializamos una bandera para el estado de los datos
+datos_disponibles = False
 
 # -----------------------------------------------------------------------------
 # 4. CAPA DE VISUALIZACIÓN INMEDIATA (DASHBOARD)
@@ -179,6 +183,7 @@ elif cultivo_input:
         df = conn.query(query, params=params)
         
         if not df.empty:
+            datos_disponibles = True # Bandera para habilitar la generacion de mapas
             cols_to_plot = []
             for m_label in metricas_seleccionadas:
                 col_db = columnas_metricas[m_label]
@@ -231,7 +236,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto y Limpio con Span HTML Seguro ---
+            # --- Resumen Compacto con Markdown Nativo (Corregido) ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -239,7 +244,7 @@ elif cultivo_input:
             for idx, m_label in enumerate(cols_to_plot):
                 with cols_metric_cards[idx]:
                     with st.container(border=True):
-                        st.markdown(f"**📊 {m_label.upper()}**")
+                        st.markdown(f"#### 📊 {m_label.upper()}")
                         st.markdown("---")
                         
                         val_anterior = None
@@ -250,27 +255,24 @@ elif cultivo_input:
                             if val_anterior is not None and val_anterior != 0:
                                 var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
                                 if var_pct > 0:
-                                    badge = f"<span style='color: #4ade80; font-weight: 600;'>▲ +{var_pct:.1f}%</span>"
+                                    badge = f":green[▲ +{var_pct:.1f}%]"
                                 elif var_pct < 0:
-                                    badge = f"<span style='color: #f87171; font-weight: 600;'>▼ {var_pct:.1f}%</span>"
+                                    badge = f":red[▼ {var_pct:.1f}%]"
                                 else:
-                                    badge = "<span style='color: #94a3b8; font-weight: 600;'>0.0%</span>"
+                                    badge = ":gray[0.0%]"
                             else:
-                                badge = "<span style='color: #94a3b8; font-weight: 600;'>Base</span>"
+                                badge = ":gray[Base]"
                                 
                             val_anterior = val_actual
                             
-                            # Fila compacta estructurada para evitar espacios vacíos excesivos
-                            st.markdown(
-                                f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px;'>"
-                                f"<span style='color: #8b9bb4;'>Año {anio_actual}:</span>"
-                                f"<span><b style='color: #ffffff; margin-right: 8px;'>{val_actual:,.2f}</b> {badge}</span>"
-                                f"</div>",
-                                unsafe_allow_html=True
-                            )
+                            rc1, rc2 = st.columns([1, 1.3])
+                            with rc1:
+                                st.markdown(f"**Año {anio_actual}:**")
+                            with rc2:
+                                st.markdown(f"<div style='text-align: right;'>{val_actual:,.2f} {badge}</div>", unsafe_allow_html=True)
                 
         else:
-            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Prueba seleccionando un ciclo diferente o limpiando el filtro de municipio.")
+            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros.")
     except Exception as e:
         st.warning(f"Error consultando la base de datos: {e}")
 
@@ -280,16 +282,16 @@ st.markdown("---")
 # 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA
 # -----------------------------------------------------------------------------
 st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros de Cartografía y Reporte de Inteligencia</h4>", unsafe_allow_html=True)
-st.caption("Genera mapas vectoriales inmediatos o solicita el análisis profundo con el Agente SIACON en Cloud Run.")
+st.caption("Genera mapas interactivos inmediatos o solicita el análisis profundo con el Agente SIACON en Cloud Run.")
 
 c9, c10, c11, c12 = st.columns(4)
 with c9:
-    nivel = st.selectbox("🌐 NIVEL DE MAPEO", ["Municipal", "Estatal", "Nacional"], index=0)
+    nivel = st.selectbox("🌐 NIVEL DE MAPEO", ["Municipal", "Estatal"], index=0)
 with c10:
     st.write("") 
     generar_mapa = st.checkbox("🗺️ GENERAR MAPA", value=True)
 with c11:
-    anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024", "2025"], disabled=not generar_mapa)
+    anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024"], disabled=not generar_mapa)
 with c12:
     tipo_etiqueta = st.selectbox("🏷️ ETIQUETAS", ["Ambos (Número y Nombre)", "Solo Nombre", "Solo Número", "Ninguno"], disabled=not generar_mapa)
 
@@ -300,57 +302,70 @@ st.write("")
 
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
-    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa (Rápido)", use_container_width=True)
+    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa Interactivo (Rápido)", use_container_width=True)
 with col_btn2:
     btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
 
+# ----------------- MAPA INTERACTIVO NATIVO -----------------
 if btn_mapa_rapido:
-    if geo_estados is None or geo_municipios is None:
-        st.error("⚠️ No se encontraron los archivos 'estados.geojson' o 'municipios.geojson' en el repositorio.")
-    elif 'df' not in locals() or df.empty:
-        st.error("⚠️ Primero debes generar datos válidos en la Sección 1.")
+    if not generar_mapa or not anios_mapa:
+        st.error("⚠️ Activa 'Generar Mapa' y selecciona al menos un año.")
+    elif not datos_disponibles:
+        st.error("⚠️ No hay datos disponibles para dibujar el mapa. Verifica tus filtros en la Sección 1.")
+    elif geo_estados_data is None or geo_municipios_data is None:
+        st.error("⚠️ No se encontraron los archivos 'geo_estados.json' o 'geo_municipios.json' en el repositorio.")
     else:
         metrica_activa = metricas_seleccionadas[0]
+        anio_mapa = int(anios_mapa[-1]) # Tomamos el último año seleccionado para el mapa
         
         with st.spinner("🗺️ Renderizando mapa interactivo en tiempo real..."):
             st.markdown("---")
-            st.markdown(f"<h2 style='text-align: center;'>🗺️ Distribución de {metrica_activa}</h2>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='text-align: center;'>🗺️ Distribución de {metrica_activa} ({anio_mapa})</h3>", unsafe_allow_html=True)
             
-            # 1. Agrupar los datos según el nivel elegido (Estatal o Municipal)
-            if nivel == "Estatal" or estado_input == "Todos":
-                df_mapa = df.groupby("estado")[metrica_activa].sum().reset_index()
-                geojson_usar = geo_estados
-                llave_geojson = "properties.nomestado" # Cambia 'nomestado' por el nombre exacto de la columna en tu GeoJSON
-                columna_df = "estado"
+            df_mapa = df[df['anio'] == anio_mapa]
+            
+            if df_mapa.empty:
+                st.warning(f"No hay datos registrados específicamente para el año {anio_mapa} con estos filtros.")
             else:
-                df_mapa = df.groupby("municipio")[metrica_activa].sum().reset_index()
-                geojson_usar = geo_municipios
-                llave_geojson = "properties.nommunicipio" # Cambia 'nommunicipio' por el nombre exacto de la columna en tu GeoJSON
-                columna_df = "municipio"
+                if nivel == "Estatal":
+                    df_plot_map = df_mapa.groupby("estado")[metrica_activa].sum().reset_index()
+                    geojson_usar = geo_estados_data
+                    llave_geojson = "properties.NOMGEO"
+                    columna_df = "estado"
+                    zoom_lvl = 4
+                else:
+                    df_plot_map = df_mapa.groupby("municipio")[metrica_activa].sum().reset_index()
+                    geojson_usar = geo_municipios_data
+                    llave_geojson = "properties.NOMGEO" 
+                    columna_df = "municipio"
+                    zoom_lvl = 6 if estado_input != "Todos" else 4
 
-            # 2. Dibujar el mapa interactivo con Plotly Mapbox
-            fig_mapa = px.choropleth_mapbox(
-                df_mapa,
-                geojson=geojson_usar,
-                locations=columna_df,
-                featureidkey=llave_geojson,
-                color=metrica_activa,
-                color_continuous_scale="Viridis",
-                mapbox_style="carto-darkmatter", # Estilo oscuro para que coincida con tu diseño
-                zoom=4 if nivel == "Estatal" else 6, 
-                center={"lat": 23.6345, "lon": -102.5528}, # Centro de México
-                opacity=0.7,
-                hover_name=columna_df
-            )
-            
-            fig_mapa.update_layout(
-                margin={"r":0, "t":0, "l":0, "b":0},
-                paper_bgcolor="#0b1325",
-                plot_bgcolor="#0b1325"
-            )
-            
-            st.plotly_chart(fig_mapa, use_container_width=True)
+                try:
+                    fig_mapa = px.choropleth_mapbox(
+                        df_plot_map,
+                        geojson=geojson_usar,
+                        locations=columna_df,
+                        featureidkey=llave_geojson,
+                        color=metrica_activa,
+                        color_continuous_scale="Viridis",
+                        mapbox_style="carto-darkmatter",
+                        zoom=zoom_lvl, 
+                        center={"lat": 23.6345, "lon": -102.5528},
+                        opacity=0.7,
+                        hover_name=columna_df
+                    )
+                    
+                    fig_mapa.update_layout(
+                        margin={"r":0, "t":0, "l":0, "b":0},
+                        paper_bgcolor="#0b1325",
+                        plot_bgcolor="#0b1325"
+                    )
+                    
+                    st.plotly_chart(fig_mapa, use_container_width=True)
+                except Exception as e:
+                     st.error(f"Error renderizando el mapa con Plotly: {e}")
 
+# ----------------- ANÁLISIS PROFUNDO (CLOUD RUN) -----------------
 if btn_ia_completo:
     if not metricas_seleccionadas:
         st.error("⚠️ Define al menos una 'Métrica' en la Sección 1.")
@@ -369,13 +384,13 @@ if btn_ia_completo:
         prompt_agente += f" {rango_txt}. Nivel requerido para el reporte: {nivel.lower()}."
         prompt_agente += " Exporta a excel y devuelve el Análisis Agroclimático textual."
         
-        if generar_mapa and anios_mapa:
-            etiqueta_final = {"Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre", "Solo Número": "numero", "Ninguno": "ninguno"}[tipo_etiqueta]
-            prompt_agente += f" Además genera mapas comparativos de los años {', '.join(anios_mapa)}, etiqueta_mapa='{etiqueta_final}' utilizando la métrica principal '{metricas_seleccionadas[0]}'."
-            
-        with st.spinner("🧠 El Agente SIACON está analizando el clima, sequía y procesando la cartografía (Puede tardar ~40 seg)..."):
+        # En esta opción, el Agente no genera el mapa de imagen para ahorrar tiempo y evitar Timeouts, 
+        # ya que el usuario puede usar el mapa interactivo rápido.
+        
+        with st.spinner("🧠 El Agente SIACON está analizando el clima, sequía y generando el reporte..."):
             try:
-                respuesta = requests.post(API_URL, json={"pregunta": prompt_agente}, timeout=600)
+                # El Timeout se incrementó a 900 (15 minutos) como medida de seguridad
+                respuesta = requests.post(API_URL, json={"pregunta": prompt_agente}, timeout=900)
                 datos = respuesta.json()
                 
                 if datos.get("ok"):
@@ -383,7 +398,6 @@ if btn_ia_completo:
                     texto_respuesta = datos.get("respuesta", "")
                     
                     documentos = [f for f in archivos if f.lower().endswith((".xlsx", ".txt"))]
-                    imagenes_mapas = [f for f in archivos if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
                     
                     res_col1, res_col2 = st.columns([1, 1.2])
                     
@@ -406,15 +420,9 @@ if btn_ia_completo:
                         else:
                             st.info(texto_respuesta)
 
-                    if imagenes_mapas:
-                        st.markdown("---")
-                        st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Generada</h2>", unsafe_allow_html=True)
-                        for mapa in imagenes_mapas:
-                            mapa_url = f"{BASE_FILE_URL}{mapa}"
-                            st.image(mapa_url, use_container_width=True)
-                            st.markdown(f"<div style='text-align: center;'><a href='{mapa_url}' target='_blank'>⬇️ Ver Imagen en Alta Resolución</a></div>", unsafe_allow_html=True)
-
                 else:
                     st.error(f"❌ Error del agente: {datos.get('error', 'Desconocido')}")
+            except requests.exceptions.ReadTimeout:
+                st.error("❌ El servidor tardó demasiado en responder (Timeout). Intenta reducir el rango de años.")
             except Exception as e:
                 st.error(f"❌ Error de conexión al contenedor: {e}")
