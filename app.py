@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import requests
 
 # -----------------------------------------------------------------------------
@@ -15,7 +16,6 @@ st.markdown("""
     .main-title { color: #ffffff !important; font-size: 26px; font-weight: 700; margin-bottom: 2px; }
     .subtitle { color: #8b9bb4 !important; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 25px; }
     
-    /* Corrección Visual para Inputs y Dropdowns */
     .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div { background-color: #1e293b !important; border: 1px solid #334155 !important; }
     input[type="text"] { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
     .stSelectbox div[data-baseweb="select"] div, .stMultiSelect div[data-baseweb="select"] div { color: #ffffff !important; }
@@ -24,8 +24,8 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tarjetas de Resumen Anual Estéticas */
-    .year-card {
+    /* Tarjetas agrupadas por Variable */
+    .metric-card {
         background-color: #1e293b;
         border: 1px solid #334155;
         border-radius: 8px;
@@ -33,22 +33,23 @@ st.markdown("""
         margin-bottom: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    .year-title {
-        font-size: 16px;
+    .metric-card-title {
+        font-size: 15px;
         font-weight: bold;
         color: #d4af37 !important;
         margin-bottom: 10px;
         border-bottom: 1px solid #334155;
         padding-bottom: 5px;
+        text-transform: uppercase;
     }
-    .metric-row {
+    .year-row {
         display: flex;
         justify-content: space-between;
         font-size: 13px;
         margin-bottom: 5px;
     }
-    .metric-name { color: #8b9bb4; }
-    .metric-val { color: #ffffff; font-weight: 600; }
+    .year-name { color: #8b9bb4; }
+    .year-val { color: #ffffff; font-weight: 600; }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
@@ -90,7 +91,7 @@ columnas_metricas = {
 }
 
 # -----------------------------------------------------------------------------
-# 3. SECCIÓN 1: FILTROS E INTERFAZ (Listas Desplegables)
+# 3. SECCIÓN 1: FILTROS E INTERFAZ
 # -----------------------------------------------------------------------------
 st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
 
@@ -110,17 +111,19 @@ with c5:
 with c6:
     modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"], default=[])
 with c7:
-    metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S)", list(columnas_metricas.keys()), default=["Producción"])
+    metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S) [Máximo 2 recomendadas]", list(columnas_metricas.keys()), default=["Producción"])
 with c8:
     anios = st.slider("📅 RANGO DE AÑOS", 2015, 2025, (2018, 2025))
 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 4. CAPA DE VISUALIZACIÓN INMEDIATA (DASHBOARD)
+# 4. CAPA DE VISUALIZACIÓN INMEDIATA (DASHBOARD CON DOBLE ENTRADA Y CONTENEDORES POR VARIABLE)
 # -----------------------------------------------------------------------------
 if not metricas_seleccionadas:
     st.warning("⚠️ Selecciona al menos una métrica para visualizar los datos.")
+elif len(metricas_seleccionadas) > 2:
+    st.warning("⚠️ Para una mejor visualización de doble entrada, se recomienda seleccionar un máximo de 2 métricas simultáneas.")
 elif cultivo_input:
     select_metrics = []
     for m_label in metricas_seleccionadas:
@@ -162,11 +165,9 @@ elif cultivo_input:
         query += " AND m.nommunicipio ILIKE :municipio"
         params["municipio"] = f"%{municipio_input}%"
         
-    # Filtro flexible para ciclos: solo aplica si el usuario seleccionó alguno explícitamente
     if ciclos:
         ciclos_str = ", ".join([f"'{c}'" for c in ciclos])
         query += f" AND ci.nomciclo IN ({ciclos_str})"
-    # Filtro flexible para modalidades: solo aplica si el usuario seleccionó alguna explícitamente
     if modalidades:
         modalidades_str = ", ".join([f"'{mo}'" for mo in modalidades])
         query += f" AND mo.nommodalidad IN ({modalidades_str})"
@@ -188,16 +189,33 @@ elif cultivo_input:
             g_col1, g_col2 = st.columns([2, 1])
             
             with g_col1:
-                st.markdown(f"### 📈 Evolución Temporal")
+                st.markdown(f"### 📈 Evolución Temporal (Doble Entrada)")
                 df_plot_line = df.groupby("anio")[cols_to_plot].sum().reset_index()
                 
-                fig_line = px.line(df_plot_line, x="anio", y=cols_to_plot, markers=True)
+                # Implementación de Doble Entrada (Eje Y secundario si hay 2 variables)
+                if len(cols_to_plot) == 2:
+                    fig_line = make_subplots(specs=[[{"secondary_y": True}]])
+                    
+                    # Variable 1 en eje izquierdo
+                    fig_line.add_trace(
+                        go.Scatter(x=df_plot_line["anio"], y=df_plot_line[cols_to_plot[0]], name=cols_to_plot[0], mode="lines+markers", line=dict(width=3, color="#d4af37")),
+                        secondary_y=False,
+                    )
+                    # Variable 2 en eje derecho
+                    fig_line.add_trace(
+                        go.Scatter(x=df_plot_line["anio"], y=df_plot_line[cols_to_plot[1]], name=cols_to_plot[1], mode="lines+markers", line=dict(width=3, color="#00ACC1")),
+                        secondary_y=True,
+                    )
+                    fig_line.update_yaxes(title_text=f"<b>{cols_to_plot[0]}</b>", secondary_y=False, title_font=dict(color="#d4af37"))
+                    fig_line.update_yaxes(title_text=f"<b>{cols_to_plot[1]}</b>", secondary_y=True, title_font=dict(color="#00ACC1"))
+                else:
+                    fig_line = px.line(df_plot_line, x="anio", y=cols_to_plot[0], markers=True)
+                    fig_line.update_traces(line=dict(width=3, color="#d4af37"))
+                
                 fig_line.update_layout(
                     template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
                     hovermode="x unified", font=dict(color="#8b9bb4"),
-                    xaxis_title="Año", yaxis_title="Métrica(s)",
-                    legend_title="Variables",
-                    margin=dict(l=20, r=20, t=20, b=20)
+                    xaxis_title="Año", margin=dict(l=20, r=20, t=20, b=20)
                 )
                 st.plotly_chart(fig_line, use_container_width=True)
                 
@@ -216,42 +234,38 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Anual en Contenedores Estéticos ---
-            st.markdown("### 📋 Resumen por Año (Variables Seleccionadas)")
+            # --- Resumen Agrupado por Variable (Contenedores por Métrica) ---
+            st.markdown("### 📋 Resumen Detallado por Variable")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index()
             
-            # Renderizamos tarjetas estéticas distribuidas en columnas (ej. 4 años por fila)
-            anios_unicos = sorted(df_resumen["anio"].unique(), reverse=True)
-            
-            # Mostramos en filas de hasta 4 columnas
-            cols_cards = st.columns(min(len(anios_unicos), 4))
-            for idx, row in df_resumen.iterrows():
-                col_target = cols_cards[idx % len(cols_cards)]
-                with col_target:
-                    metrics_html = ""
-                    for m_label in cols_to_plot:
+            # Un contenedor por cada métrica seleccionada
+            cols_metric_cards = st.columns(len(cols_to_plot))
+            for idx, m_label in enumerate(cols_to_plot):
+                with cols_metric_cards[idx]:
+                    years_html = ""
+                    for _, row in df_resumen.iterrows():
                         val = row[m_label]
-                        metrics_html += f'<div class="metric-row"><span class="metric-name">{m_label}:</span><span class="metric-val">{val:,.2f}</span></div>'
+                        years_html += f'<div class="year-row"><span class="year-name">Año {int(row["anio"])}:</span><span class="year-val">{val:,.2f}</span></div>'
                     
                     st.markdown(f"""
-                        <div class="year-card">
-                            <div class="year-title">📅 Año {int(row['anio'])}</div>
-                            {metrics_html}
+                        <div class="metric-card">
+                            <div class="metric-card-title">📊 {m_label}</div>
+                            {years_html}
                         </div>
                     """, unsafe_allow_html=True)
                 
         else:
-            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Intenta ajustar el cultivo o limpiar los filtros de ciclo/modalidad.")
+            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros.")
     except Exception as e:
         st.warning(f"Error consultando la base de datos: {e}")
 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA
+# 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA (SOLO MAPA RÁPIDO O IA)
 # -----------------------------------------------------------------------------
 st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros de Cartografía y Reporte de Inteligencia</h4>", unsafe_allow_html=True)
-st.caption("Esta sección consulta al Agente SIACON en Cloud Run para descargar los Excel, analizar el estrés hídrico y dibujar los shapefiles.")
+st.caption("Genera mapas vectoriales inmediatos o solicita el análisis profundo con el Agente SIACON en Cloud Run.")
 
 c9, c10, c11, c12 = st.columns(4)
 with c9:
@@ -269,13 +283,50 @@ BASE_FILE_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/archivos/"
 
 st.write("")
 
-if st.button("🚀 Ejecutar Análisis Profundo (IA, Sequía y Mapas)", type="primary", use_container_width=True):
+col_btn1, col_btn2 = st.columns(2)
+with col_btn1:
+    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa (Rápido)", use_container_width=True)
+with col_btn2:
+    btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
+
+if btn_mapa_rapido:
+    if not generar_mapa or not anios_mapa:
+        st.error("⚠️ Activa 'Generar Mapa' y selecciona al menos un año en 'Años Mapa'.")
+    else:
+        etiqueta_final = {"Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre", "Solo Número": "numero", "Ninguno": "ninguno"}[tipo_etiqueta]
+        anios_str = ", ".join(anios_mapa)
+        metrica_activa = metricas_seleccionadas[0] if metricas_seleccionadas else "Producción"
+        
+        # Petición dirigida exclusivamente a la herramienta de mapas del agente
+        prompt_mapa = f"Genera un mapa de {metrica_activa.lower()} del cultivo {cultivo_input} en cobertura {estado_input if estado_input != 'Todos' else 'Nacional'} para los años [{anios_str}], nivel_mapa='{nivel.lower()}', etiqueta_mapa='{etiqueta_final}'."
+        
+        with st.spinner("🗺️ Renderizando cartografía vectorial..."):
+            try:
+                res = requests.post(API_URL, json={"pregunta": prompt_mapa}, timeout=300)
+                dat = res.json()
+                if dat.get("ok"):
+                    archs = dat.get("archivos", [])
+                    mapas = [f for f in archs if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
+                    if mapas:
+                        st.markdown("---")
+                        st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Generada</h2>", unsafe_allow_html=True)
+                        for m in mapas:
+                            m_url = f"{BASE_FILE_URL}{m}"
+                            st.image(m_url, use_container_width=True)
+                            st.markdown(f"<div style='text-align: center;'><a href='{m_url}' target='_blank'>⬇️ Ver Imagen en Alta Resolución</a></div>", unsafe_allow_html=True)
+                    else:
+                        st.info(dat.get("respuesta", "Mapa generado."))
+                else:
+                    st.error(f"❌ Error: {dat.get('error', 'Desconocido')}")
+            except Exception as ex:
+                st.error(f"❌ Error de conexión: {ex}")
+
+if btn_ia_completo:
     if not metricas_seleccionadas:
         st.error("⚠️ Define al menos una 'Métrica' en la Sección 1.")
     else:
         rango_txt = f"del año {anios[0]} al {anios[1]}"
         cobertura = estado_input if estado_input != "Todos" else "Nacional"
-        
         metricas_agente = ", ".join(metricas_seleccionadas)
         
         prompt_agente = f"Genera un reporte de {metricas_agente.lower()} del cultivo {cultivo_input}"
