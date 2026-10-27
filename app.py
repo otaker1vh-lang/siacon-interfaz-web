@@ -1,65 +1,40 @@
 import streamlit as st
 import requests
+import pandas as pd
+import plotly.express as px
+import io
 
 # Configuración de página simulando el modo oscuro
 st.set_page_config(page_title="Inteligencia Geoespacial SIACON", page_icon="🌱", layout="wide")
 
-# Estilos CSS para replicar el diseño oscuro y arreglar la visibilidad de los inputs
+# Estilos CSS
 st.markdown("""
 <style>
-    /* Fondo principal estilo dashboard oscuro */
     .stApp { background-color: #0b1325; color: #e2e8f0; }
     h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { color: #e2e8f0 !important; }
-    
     .main-title { color: #ffffff !important; font-size: 26px; font-weight: 700; margin-bottom: 2px; }
     .subtitle { color: #8b9bb4 !important; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 25px; }
-    
-    /* Pestañas de navegación superiores */
     .nav-pills { font-size: 14px; color: #8b9bb4; margin-bottom: 30px; display: flex; gap: 20px; }
     .nav-pill-active { background-color: #d4af37; color: #000; padding: 4px 16px; border-radius: 20px; font-weight: 600; }
     .nav-pill-inactive { padding: 4px 16px; cursor: pointer; transition: color 0.3s; }
     .nav-pill-inactive:hover { color: #ffffff; }
     
-    /* -------------------------------------------------------------
-       CORRECCIÓN DE VISIBILIDAD DE TEXTO EN INPUTS Y SELECTORES
-       ------------------------------------------------------------- */
-    /* Fondos de los contenedores */
+    /* Corrección de Inputs */
     .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div { 
-        background-color: #1e293b !important; 
-        border: 1px solid #334155 !important; 
+        background-color: #1e293b !important; border: 1px solid #334155 !important; 
     }
-    
-    /* Color del texto que el usuario escribe (Text Inputs) */
-    input[type="text"] {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-    }
-    
-    /* Color del texto en los selectores de Streamlit */
-    .stSelectbox div[data-baseweb="select"] div, 
-    .stMultiSelect div[data-baseweb="select"] div {
-        color: #ffffff !important;
-    }
-    
-    /* Estilos de las opciones elegidas en el multiselect (Tags) */
-    .stMultiSelect span[data-baseweb="tag"] {
-        background-color: #2E7D32 !important; /* Verde oscuro para hacer contraste */
-        color: #ffffff !important;
-    }
-    .stMultiSelect span[data-baseweb="tag"] span {
-        color: #ffffff !important;
-    }
-    
-    /* Color del menú desplegable cuando se abre */
+    input[type="text"] { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+    .stSelectbox div[data-baseweb="select"] div, .stMultiSelect div[data-baseweb="select"] div { color: #ffffff !important; }
+    .stMultiSelect span[data-baseweb="tag"] { background-color: #2E7D32 !important; color: #ffffff !important; }
+    .stMultiSelect span[data-baseweb="tag"] span { color: #ffffff !important; }
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
-    /* ------------------------------------------------------------- */
 
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
 
-# Navegación superior (Precios y Exportaciones eliminados, Producción agrícola activa)
+# Navegación superior
 st.markdown('''
 <div class="nav-pills">
     <span class="nav-pill-inactive">Avance agrícola</span>
@@ -100,7 +75,7 @@ with c6:
 with c7:
     nivel = st.selectbox("🌐 NIVEL", ["Municipal", "Estatal", "Nacional"])
 with c8:
-    st.write("") # Espaciador para alinear el checkbox
+    st.write("") 
     generar_mapa = st.checkbox("🗺️ GENERAR MAPA", value=True)
 with c9:
     anios_mapa = st.multiselect(
@@ -128,31 +103,20 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
             "Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre",
             "Solo Número": "numero", "Ninguno": "ninguno"
         }[tipo_etiqueta]
-
+        
         anios_int = sorted([int(a) for a in anios])
-        rango_anios_txt = (
-            f"del año {anios_int[0]} al {anios_int[-1]}" if len(anios_int) >= 2 else f"del año {anios_int[0]}"
-        )
+        rango_anios_txt = f"del año {anios_int[0]} al {anios_int[-1]}" if len(anios_int) >= 2 else f"del año {anios_int[0]}"
 
-        # Construcción del prompt usando las variables originales 
-        prompt_construido = (
-            f"Genera un reporte de {', '.join(variables).lower()} del {cultivo} "
-            f"en cobertura {lugar} a nivel {nivel.lower()}"
-        )
-        if modalidades:
-            prompt_construido += f", modalidad {', '.join(modalidades).lower()}"
-        if ciclos:
-            prompt_construido += f", ciclo {', '.join(ciclos).lower()}"
+        prompt_construido = f"Genera un reporte de {', '.join(variables).lower()} del {cultivo} en cobertura {lugar} a nivel {nivel.lower()}"
+        if modalidades: prompt_construido += f", modalidad {', '.join(modalidades).lower()}"
+        if ciclos: prompt_construido += f", ciclo {', '.join(ciclos).lower()}"
+        
         prompt_construido += f" {rango_anios_txt}. Exporta a excel e incluye la generación de gráficas correspondientes."
-
         if generar_mapa and anios_mapa:
-            prompt_construido += (
-                f" Además genera un mapa comparativo por municipio de producción de los años {', '.join(anios_mapa)}, "
-                f"configura ranking_anios en [{', '.join(anios_mapa)}] y etiqueta_mapa exactamente como '{etiqueta_final}'."
-            )
+            prompt_construido += f" Además genera un mapa comparativo por municipio de producción de los años {', '.join(anios_mapa)}, configura ranking_anios en [{', '.join(anios_mapa)}] y etiqueta_mapa exactamente como '{etiqueta_final}'."
         prompt_construido += " INSTRUCCIÓN ESTRICTA: Transcribe palabra por palabra el 'Análisis Agroclimático' generado."
 
-        with st.spinner("🧠 Procesando datos, cruzando sequía, siniestralidad, GDD y dibujando mapas..."):
+        with st.spinner("🧠 Procesando datos, dibujando gráficas y procesando cartografía..."):
             try:
                 respuesta = requests.post(API_URL, json={"pregunta": prompt_construido}, timeout=600)
                 datos = respuesta.json()
@@ -163,27 +127,87 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
                     texto_respuesta = datos.get("respuesta", "Análisis completado.")
                     
                     documentos = [f for f in archivos if f.lower().endswith((".xlsx", ".txt"))]
-                    imagenes = [f for f in archivos if f.lower().endswith((".jpg", ".png"))]
+                    imagenes_mapas = [f for f in archivos if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
+
+                    # Diccionario de mapeo de métricas entre Front y Backend
+                    var_map = {
+                        "Superficie sembrada": "sembrada", "Superficie cosechada": "cosechada",
+                        "Superficie siniestrada": "siniestrada", "Producción": "produccion",
+                        "Rendimiento": "rendimiento", "Valor de la producción": "valorproduccion",
+                        "Precio medio rural": "preciomediorural", "Índice de siniestralidad": "indice_siniestralidad"
+                    }
+                    var_backend = var_map.get(variables[0], "produccion")
                     
-                    imagenes_mapas = [img for img in imagenes if "mapa" in img.lower()]
-                    imagenes_graficas = [img for img in imagenes if "mapa" not in img.lower()]
+                    # ==========================================
+                    # GRÁFICA INTERACTIVA ESTILO MEXAG
+                    # ==========================================
+                    excel_doc = next((doc for doc in documentos if ".xlsx" in doc.lower()), None)
+                    if excel_doc:
+                        try:
+                            # 1. Descargamos el excel temporalmente en memoria
+                            excel_bytes = requests.get(f"{BASE_FILE_URL}{excel_doc}").content
+                            df_crudos = pd.read_excel(io.BytesIO(excel_bytes), sheet_name="Datos Crudos")
+                            
+                            # 2. Preparamos los datos para la gráfica
+                            if "anio" in df_crudos.columns and var_backend in df_crudos.columns:
+                                df_crudos["anio"] = df_crudos["anio"].astype(str) # Forzar año como categoría
+                                
+                                # Agrupamos según el nivel para dibujar las líneas
+                                if "estado" in df_crudos.columns and nivel == "Estatal":
+                                    df_plot = df_crudos.groupby(["anio", "estado"])[var_backend].sum().reset_index()
+                                    color_col = "estado"
+                                else:
+                                    df_plot = df_crudos.groupby(["anio"])[var_backend].sum().reset_index()
+                                    color_col = None
+                                
+                                # 3. Dibujamos con Plotly utilizando estilo oscuro
+                                st.markdown("### 📈 Panel de Avance Agrícola (Tendencia)")
+                                fig = px.line(
+                                    df_plot, x="anio", y=var_backend, color=color_col, 
+                                    markers=True, title=f"Evolución de {variables[0]}"
+                                )
+                                fig.update_layout(
+                                    template="plotly_dark",
+                                    plot_bgcolor="#0b1325",
+                                    paper_bgcolor="#0b1325",
+                                    font=dict(color="#8b9bb4"),
+                                    title_font=dict(size=18, color="#ffffff"),
+                                    xaxis_title="Año (Ciclo Agrícola)",
+                                    yaxis_title=variables[0],
+                                    legend_title="Variación",
+                                    margin=dict(l=40, r=40, t=60, b=40)
+                                )
+                                fig.update_traces(line=dict(width=3), marker=dict(size=8))
+                                st.plotly_chart(fig, use_container_width=True)
+                        except Exception as e:
+                            st.warning(f"No se pudo renderizar la gráfica interactiva: {e}")
+
+                    st.markdown("---")
 
                     # ==========================================
-                    # PRIORIDAD 1 y 2: DATOS, INTELIGENCIA Y GRÁFICAS
+                    # DATOS E INTELIGENCIA (DESCARGAS REALES)
                     # ==========================================
                     res_col1, res_col2 = st.columns([1, 1.2])
 
                     with res_col1:
-                        st.markdown("### 📥 Descargar Entregables")
+                        st.markdown("### 📥 Descargar Entregables (Click)")
                         for doc in documentos:
                             nombre_doc = doc.split("/")[-1]
-                            icono = "📊" if nombre_doc.lower().endswith(".xlsx") else "📄"
-                            st.markdown(f"{icono} **[{nombre_doc}]({BASE_FILE_URL}{doc})**")
-                            
-                        if imagenes_graficas:
-                            st.markdown("### 📈 Gráficas Analíticas")
-                            for graf in imagenes_graficas:
-                                st.image(f"{BASE_FILE_URL}{graf}", use_container_width=True)
+                            doc_url = f"{BASE_FILE_URL}{doc}"
+                            # Botón de Descarga Real en lugar de Enlace
+                            try:
+                                doc_bytes = requests.get(doc_url).content
+                                mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if ".xlsx" in nombre_doc else "text/plain"
+                                st.download_button(
+                                    label=f"⬇️ Descargar {nombre_doc}",
+                                    data=doc_bytes,
+                                    file_name=nombre_doc,
+                                    mime=mime,
+                                    use_container_width=True
+                                )
+                            except:
+                                # Fallback por si la descarga en memoria falla
+                                st.markdown(f"**[{nombre_doc}]({doc_url})**")
 
                     with res_col2:
                         st.markdown("### 🧠 Reporte de Inteligencia")
@@ -194,7 +218,7 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
                             st.info(texto_respuesta)
 
                     # ==========================================
-                    # PRIORIDAD 3: MAPAS HASTA EL FINAL
+                    # MAPAS HASTA EL FINAL
                     # ==========================================
                     if imagenes_mapas:
                         st.markdown("---")
