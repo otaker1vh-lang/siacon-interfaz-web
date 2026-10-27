@@ -24,10 +24,8 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tarjetas KPI */
-    .kpi-card { background-color: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155; text-align: center; }
-    .kpi-value { font-size: 24px; font-weight: bold; color: #d4af37; }
-    .kpi-label { font-size: 12px; color: #8b9bb4; text-transform: uppercase; }
+    /* Tabla Resumen */
+    .stDataFrame { margin-top: 10px; }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
@@ -58,10 +56,22 @@ def cargar_catalogos():
 
 lista_estados, lista_cultivos, lista_variedades = cargar_catalogos()
 
+columnas_metricas = {
+    "Producción": "volumenproduccion", 
+    "Superficie sembrada": "sembrada", 
+    "Superficie cosechada": "cosechada",
+    "Superficie siniestrada": "siniestrada", 
+    "Rendimiento": "rendimiento", 
+    "Valor de la producción": "valorproduccion",
+    "Precio medio rural": "preciomediorural",
+    "Índice de siniestralidad": "indice_siniestralidad"
+}
+
 # -----------------------------------------------------------------------------
-# 3. FILTROS DE INTERFAZ (Listas Desplegables)
+# 3. SECCIÓN 1: FILTROS E INTERFAZ (Listas Desplegables)
 # -----------------------------------------------------------------------------
 st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
+
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     cultivo_input = st.selectbox("🌾 CULTIVO", lista_cultivos, index=lista_cultivos.index("Maíz grano") if "Maíz grano" in lista_cultivos else 0)
@@ -72,51 +82,50 @@ with c3:
 with c4:
     municipio_input = st.text_input("🏘️ MUNICIPIO", placeholder="Ej: Ahome, Guasave...")
 
-st.markdown("<h4 style='color: #d4af37 !important; margin-top: 15px;'>2. Parámetros Agrícolas y Cartografía</h4>", unsafe_allow_html=True)
-c5, c6, c7, c8, c9 = st.columns(5)
+c5, c6, c7, c8 = st.columns(4)
 with c5:
     ciclos = st.multiselect("🌤️ CICLO", ["Otoño-Invierno", "Primavera-Verano", "Perennes"])
 with c6:
     modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"])
 with c7:
-    nivel = st.selectbox("🌐 NIVEL MAPEO", ["Municipal", "Estatal", "Nacional"], index=1)
+    metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S)", list(columnas_metricas.keys()), default=["Producción"])
 with c8:
-    metrica_seleccionada = st.selectbox("📊 MÉTRICA", ["Producción", "Superficie sembrada", "Superficie cosechada", "Superficie siniestrada", "Rendimiento", "Valor de la producción"])
-with c9:
     anios = st.slider("📅 RANGO DE AÑOS", 2015, 2025, (2018, 2025))
-
-c10, c11, c12, _ = st.columns([1, 1, 1, 2])
-with c10:
-    generar_mapa = st.checkbox("🗺️ GENERAR MAPA", value=True)
-with c11:
-    anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024", "2025"], disabled=not generar_mapa)
-with c12:
-    tipo_etiqueta = st.selectbox("🏷️ ETIQUETAS", ["Ambos (Número y Nombre)", "Solo Nombre", "Solo Número", "Ninguno"], disabled=not generar_mapa)
-
-columnas_metricas = {
-    "Producción": "volumenproduccion", "Superficie sembrada": "sembrada", "Superficie cosechada": "cosechada",
-    "Superficie siniestrada": "siniestrada", "Rendimiento": "rendimiento", "Valor de la producción": "valorproduccion"
-}
-columna_sql = columnas_metricas[metrica_seleccionada]
 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
 # 4. CAPA DE VISUALIZACIÓN INMEDIATA (DASHBOARD)
 # -----------------------------------------------------------------------------
-if cultivo_input:
-    # Se consulta la tabla municipal para poder filtrar por municipio si es necesario
+if not metricas_seleccionadas:
+    st.warning("⚠️ Selecciona al menos una métrica para visualizar los datos.")
+elif cultivo_input:
+    # 1. Preparar las métricas dinámicamente para la consulta
+    select_metrics = []
+    for m_label in metricas_seleccionadas:
+        col_db = columnas_metricas[m_label]
+        # Aproximación rápida para el dashboard en tasas. Sum para volúmenes.
+        if col_db in ['rendimiento', 'preciomediorural', 'indice_siniestralidad']:
+            select_metrics.append(f"AVG(a.{col_db}) as {col_db}")
+        else:
+            select_metrics.append(f"SUM(a.{col_db}) as {col_db}")
+    
+    metrics_sql = ", ".join(select_metrics)
+
+    # 2. Construcción de la consulta con Joins
     query = f"""
     SELECT 
         a.anio, 
         e.nomestado as estado,
         m.nommunicipio as municipio,
-        SUM(a.{columna_sql}) as valor
+        {metrics_sql}
     FROM agro_cierre_municipal a
     JOIN cat_cultivo c ON a.idcultivo = c.idcultivo
     JOIN cat_estado e ON a.idestado = e.idestado
     JOIN cat_municipio m ON a.idestado = m.idestado AND a.idmunicipio = m.idmunicipio
     LEFT JOIN cat_variedad v ON a.idcultivo = v.idcultivo AND a.idvariedad = v.idvariedad
+    LEFT JOIN cat_ciclo ci ON a.idciclo = ci.idciclo
+    LEFT JOIN cat_modalidad mo ON a.idmodalidad = mo.idmodalidad
     WHERE a.anio BETWEEN :anio_inicio AND :anio_fin
     """
     params = {"anio_inicio": anios[0], "anio_fin": anios[1]}
@@ -134,62 +143,70 @@ if cultivo_input:
         query += " AND m.nommunicipio ILIKE :municipio"
         params["municipio"] = f"%{municipio_input}%"
         
+    # Agregando filtros exactos de Ciclo y Modalidad
+    if ciclos:
+        ciclos_str = ", ".join([f"'{c}'" for c in ciclos])
+        query += f" AND ci.nomciclo IN ({ciclos_str})"
+    if modalidades:
+        modalidades_str = ", ".join([f"'{mo}'" for mo in modalidades])
+        query += f" AND mo.nommodalidad IN ({modalidades_str})"
+        
     query += " GROUP BY a.anio, e.nomestado, m.nommunicipio ORDER BY a.anio"
 
     try:
         df = conn.query(query, params=params)
         
         if not df.empty:
-            df["valor"] = pd.to_numeric(df["valor"], errors='coerce').fillna(0)
+            # Reemplazar los nombres SQL por nombres visuales bonitos
+            cols_to_plot = []
+            for m_label in metricas_seleccionadas:
+                col_db = columnas_metricas[m_label]
+                df[m_label] = pd.to_numeric(df[col_db], errors='coerce').fillna(0)
+                cols_to_plot.append(m_label)
             
-            # --- KPIs ---
-            total_global = df["valor"].sum()
             ultimo_anio = df["anio"].max()
-            total_ultimo = df[df["anio"] == ultimo_anio]["valor"].sum()
-            
-            k1, k2, k3 = st.columns(3)
-            k1.markdown(f'<div class="kpi-card"><div class="kpi-label">Total Acumulado ({anios[0]}-{anios[1]})</div><div class="kpi-value">{total_global:,.0f}</div></div>', unsafe_allow_html=True)
-            k2.markdown(f'<div class="kpi-card"><div class="kpi-label">Registro Año {ultimo_anio}</div><div class="kpi-value">{total_ultimo:,.0f}</div></div>', unsafe_allow_html=True)
-            k3.markdown(f'<div class="kpi-card"><div class="kpi-label">Métrica Activa</div><div class="kpi-value" style="font-size:18px; margin-top:5px;">{metrica_seleccionada}</div></div>', unsafe_allow_html=True)
-            st.write("")
             
             # --- Gráficas Mejoradas ---
             g_col1, g_col2 = st.columns([2, 1])
             
             with g_col1:
                 st.markdown(f"### 📈 Evolución Temporal")
-                # Agrupación dependiendo del nivel de visualización
-                if municipio_input:
-                    df_plot_line = df.groupby(["anio", "municipio"])["valor"].sum().reset_index()
-                    fig_line = px.line(df_plot_line, x="anio", y="valor", color="municipio", markers=True)
-                elif estado_input != "Todos":
-                    df_plot_line = df.groupby(["anio", "estado"])["valor"].sum().reset_index()
-                    fig_line = px.line(df_plot_line, x="anio", y="valor", color="estado", markers=True)
-                else:
-                    df_plot_line = df.groupby("anio")["valor"].sum().reset_index()
-                    fig_line = px.area(df_plot_line, x="anio", y="valor", markers=True, color_discrete_sequence=["#d4af37"])
-                    fig_line.update_traces(fillcolor='rgba(212, 175, 55, 0.2)')
-                    
+                # Agrupamos por año para consolidar independientemente de los estados/municipios
+                df_plot_line = df.groupby("anio")[cols_to_plot].sum().reset_index()
+                
+                # Plotly acepta una lista en "y" para graficar varias líneas a la vez
+                fig_line = px.line(df_plot_line, x="anio", y=cols_to_plot, markers=True)
                 fig_line.update_layout(
                     template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
                     hovermode="x unified", font=dict(color="#8b9bb4"),
-                    xaxis_title="Año", yaxis_title=metrica_seleccionada,
+                    xaxis_title="Año", yaxis_title="Métrica(s)",
+                    legend_title="Variables",
                     margin=dict(l=20, r=20, t=20, b=20)
                 )
                 st.plotly_chart(fig_line, use_container_width=True)
                 
             with g_col2:
-                st.markdown(f"### 📊 Top Distribución ({ultimo_anio})")
+                # Top Distribución: Usa solo la PRIMERA métrica seleccionada para clasificar
+                metrica_principal = cols_to_plot[0]
+                st.markdown(f"### 📊 Top {metrica_principal} ({ultimo_anio})")
                 df_last = df[df["anio"] == ultimo_anio]
                 agrupacion = "municipio" if estado_input != "Todos" else "estado"
-                df_bar = df_last.groupby(agrupacion)["valor"].sum().reset_index().sort_values("valor", ascending=True).tail(10)
                 
-                fig_bar = px.bar(df_bar, x="valor", y=agrupacion, orientation='h', color_discrete_sequence=["#2E7D32"])
+                df_bar = df_last.groupby(agrupacion)[metrica_principal].sum().reset_index().sort_values(metrica_principal, ascending=True).tail(10)
+                
+                fig_bar = px.bar(df_bar, x=metrica_principal, y=agrupacion, orientation='h', color_discrete_sequence=["#2E7D32"])
                 fig_bar.update_layout(
                     template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
                     xaxis_title="", yaxis_title="", margin=dict(l=10, r=20, t=20, b=20)
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
+                
+            # --- Tabla Resumen por Año ---
+            st.markdown("### 📋 Resumen por Año (Variables Seleccionadas)")
+            # Agrupamos los datos estrictamente por año mostrando los totales de ese año
+            df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index()
+            # Formato bonito
+            st.dataframe(df_resumen.style.format(precision=2, thousands=","), use_container_width=True, hide_index=True)
                 
         else:
             st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros.")
@@ -199,68 +216,94 @@ if cultivo_input:
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 5. CAPA DE INTELIGENCIA (LLM Y CONTENEDOR EN CLOUD RUN)
+# 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>Generación de Entregables (Agente SIACON)</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros de Cartografía y Reporte de Inteligencia</h4>", unsafe_allow_html=True)
+st.caption("Esta sección consulta al Agente SIACON en Cloud Run para descargar los Excel, analizar el estrés hídrico y dibujar los shapefiles.")
+
+c9, c10, c11, c12 = st.columns(4)
+with c9:
+    nivel = st.selectbox("🌐 NIVEL DE MAPEO", ["Municipal", "Estatal", "Nacional"], index=0)
+with c10:
+    st.write("") 
+    generar_mapa = st.checkbox("🗺️ GENERAR MAPA", value=True)
+with c11:
+    anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024", "2025"], disabled=not generar_mapa)
+with c12:
+    tipo_etiqueta = st.selectbox("🏷️ ETIQUETAS", ["Ambos (Número y Nombre)", "Solo Nombre", "Solo Número", "Ninguno"], disabled=not generar_mapa)
+
 API_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/consulta"
 BASE_FILE_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/archivos/"
 
-if st.button("🧠 Ejecutar Análisis Profundo (IA, Sequía y Mapas)", type="primary"):
-    rango_txt = f"del año {anios[0]} al {anios[1]}"
-    cobertura = estado_input if estado_input != "Todos" else "Nacional"
-    
-    # Construcción precisa del prompt para el Agente
-    prompt_agente = f"Genera un reporte de {metrica_seleccionada.lower()} del cultivo {cultivo_input}"
-    if variedad_input != "Todas": prompt_agente += f" variedad {variedad_input}"
-    prompt_agente += f" en cobertura {cobertura}."
-    if municipio_input: prompt_agente += f" Filtra estrictamente por el municipio {municipio_input}."
-    if ciclos: prompt_agente += f" Ciclos: {', '.join(ciclos)}."
-    if modalidades: prompt_agente += f" Modalidad: {', '.join(modalidades)}."
-    
-    prompt_agente += f" {rango_txt}. Nivel requerido: {nivel.lower()}."
-    prompt_agente += " Exporta a excel y devuelve el Análisis Agroclimático."
-    
-    if generar_mapa and anios_mapa:
-        etiqueta_final = {"Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre", "Solo Número": "numero", "Ninguno": "ninguno"}[tipo_etiqueta]
-        prompt_agente += f" Genera mapas comparativos de los años {', '.join(anios_mapa)}, etiqueta_mapa='{etiqueta_final}'."
+st.write("") # Espacio
+
+if st.button("🚀 Ejecutar Análisis Profundo (IA, Sequía y Mapas)", type="primary", use_container_width=True):
+    if not metricas_seleccionadas:
+        st.error("⚠️ Define al menos una 'Métrica' en la Sección 1.")
+    else:
+        rango_txt = f"del año {anios[0]} al {anios[1]}"
+        cobertura = estado_input if estado_input != "Todos" else "Nacional"
         
-    with st.spinner("🧠 El Agente SIACON está analizando el clima, sequía y procesando la cartografía..."):
-        try:
-            respuesta = requests.post(API_URL, json={"pregunta": prompt_agente}, timeout=600)
-            datos = respuesta.json()
+        # Enviar TODAS las métricas solicitadas al agente
+        metricas_agente = ", ".join(metricas_seleccionadas)
+        
+        prompt_agente = f"Genera un reporte de {metricas_agente.lower()} del cultivo {cultivo_input}"
+        if variedad_input != "Todas": prompt_agente += f" variedad {variedad_input}"
+        prompt_agente += f" en cobertura {cobertura}."
+        if municipio_input: prompt_agente += f" Filtra estrictamente por el municipio {municipio_input}."
+        if ciclos: prompt_agente += f" Ciclos: {', '.join(ciclos)}."
+        if modalidades: prompt_agente += f" Modalidad: {', '.join(modalidades)}."
+        
+        prompt_agente += f" {rango_txt}. Nivel requerido para el reporte: {nivel.lower()}."
+        prompt_agente += " Exporta a excel y devuelve el Análisis Agroclimático textual."
+        
+        if generar_mapa and anios_mapa:
+            etiqueta_final = {"Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre", "Solo Número": "numero", "Ninguno": "ninguno"}[tipo_etiqueta]
+            prompt_agente += f" Además genera mapas comparativos de los años {', '.join(anios_mapa)}, etiqueta_mapa='{etiqueta_final}' utilizando la métrica principal '{metricas_seleccionadas[0]}'."
             
-            if datos.get("ok"):
-                archivos = datos.get("archivos", [])
-                texto_respuesta = datos.get("respuesta", "")
-                documentos = [f for f in archivos if f.lower().endswith((".xlsx", ".txt"))]
-                imagenes_mapas = [f for f in archivos if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
+        with st.spinner("🧠 El Agente SIACON está analizando el clima, sequía y procesando la cartografía (Puede tardar ~40 seg)..."):
+            try:
+                respuesta = requests.post(API_URL, json={"pregunta": prompt_agente}, timeout=600)
+                datos = respuesta.json()
                 
-                res_col1, res_col2 = st.columns([1, 1.2])
-                with res_col1:
-                    st.markdown("### 📥 Descargar Matrices de Excel")
-                    for doc in documentos:
-                        nombre_doc = doc.split("/")[-1]
-                        if ".xlsx" in nombre_doc:
-                            doc_bytes = requests.get(f"{BASE_FILE_URL}{doc}").content
-                            st.download_button(
-                                label=f"⬇️ {nombre_doc}", data=doc_bytes, file_name=nombre_doc,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
-                            )
-                with res_col2:
-                    st.markdown("### 🧠 Reporte Agroclimático Ejecutivo")
-                    if "ANÁLISIS AGROCLIMÁTICO Y ESTRATÉGICO" in texto_respuesta:
-                        analisis_limpio = texto_respuesta.split("ANÁLISIS AGROCLIMÁTICO Y ESTRATÉGICO")[-1].strip("=\n ")
-                        st.markdown(f'<div class="analisis-box">{analisis_limpio}</div>', unsafe_allow_html=True)
-                    else:
-                        st.info(texto_respuesta)
+                if datos.get("ok"):
+                    archivos = datos.get("archivos", [])
+                    texto_respuesta = datos.get("respuesta", "")
+                    
+                    documentos = [f for f in archivos if f.lower().endswith((".xlsx", ".txt"))]
+                    imagenes_mapas = [f for f in archivos if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
+                    
+                    res_col1, res_col2 = st.columns([1, 1.2])
+                    
+                    with res_col1:
+                        st.markdown("### 📥 Descargar Matrices de Excel")
+                        for doc in documentos:
+                            nombre_doc = doc.split("/")[-1]
+                            if ".xlsx" in nombre_doc:
+                                doc_bytes = requests.get(f"{BASE_FILE_URL}{doc}").content
+                                st.download_button(
+                                    label=f"⬇️ {nombre_doc}", data=doc_bytes, file_name=nombre_doc,
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
+                                )
+                                
+                    with res_col2:
+                        st.markdown("### 🧠 Reporte Agroclimático Ejecutivo")
+                        if "ANÁLISIS AGROCLIMÁTICO Y ESTRATÉGICO" in texto_respuesta:
+                            analisis_limpio = texto_respuesta.split("ANÁLISIS AGROCLIMÁTICO Y ESTRATÉGICO")[-1].strip("=\n ")
+                            st.markdown(f'<div class="analisis-box">{analisis_limpio}</div>', unsafe_allow_html=True)
+                        else:
+                            st.info(texto_respuesta)
 
-                if imagenes_mapas:
-                    st.markdown("---")
-                    st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Comparativa</h2>", unsafe_allow_html=True)
-                    for mapa in imagenes_mapas:
-                        st.image(f"{BASE_FILE_URL}{mapa}", use_container_width=True)
+                    # 6. Mostrar Mapa correspondiente inmediatamente al final
+                    if imagenes_mapas:
+                        st.markdown("---")
+                        st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Generada</h2>", unsafe_allow_html=True)
+                        for mapa in imagenes_mapas:
+                            mapa_url = f"{BASE_FILE_URL}{mapa}"
+                            st.image(mapa_url, use_container_width=True)
+                            st.markdown(f"<div style='text-align: center;'><a href='{mapa_url}' target='_blank'>⬇️ Ver Imagen en Alta Resolución</a></div>", unsafe_allow_html=True)
 
-            else:
-                st.error(f"❌ Error del agente: {datos.get('error', 'Desconocido')}")
-        except Exception as e:
-            st.error(f"❌ Error de conexión al contenedor: {e}")
+                else:
+                    st.error(f"❌ Error del agente: {datos.get('error', 'Desconocido')}")
+            except Exception as e:
+                st.error(f"❌ Error de conexión al contenedor: {e}")
