@@ -1,6 +1,6 @@
 streamlit
 requests
 pandas
+plotly
 psycopg2-binary
 SQLAlchemy
-requirements.txt
