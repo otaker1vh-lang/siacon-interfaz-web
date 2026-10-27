@@ -217,7 +217,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto con Renderizado HTML Atómico Seguro ---
+            # --- Resumen Compacto con Markdown Nativo (Sin errores de etiquetas HTML) ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -225,9 +225,10 @@ elif cultivo_input:
             for idx, m_label in enumerate(cols_to_plot):
                 with cols_metric_cards[idx]:
                     with st.container(border=True):
-                        rows_html = ""
-                        val_anterior = None
+                        st.markdown(f"#### 📊 {m_label.upper()}")
+                        st.markdown("---")
                         
+                        val_anterior = None
                         for _, row in df_resumen.iterrows():
                             val_actual = row[m_label]
                             anio_actual = int(row["anio"])
@@ -235,31 +236,22 @@ elif cultivo_input:
                             if val_anterior is not None and val_anterior != 0:
                                 var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
                                 if var_pct > 0:
-                                    badge = f"<span style='color: #4ade80; font-size: 11px; margin-left: 6px;'>▲ +{var_pct:.1f}%</span>"
+                                    badge = f":green[▲ +{var_pct:.1f}%]"
                                 elif var_pct < 0:
-                                    badge = f"<span style='color: #f87171; font-size: 11px; margin-left: 6px;'>▼ {var_pct:.1f}%</span>"
+                                    badge = f":red[▼ {var_pct:.1f}%]"
                                 else:
-                                    badge = "<span style='color: #94a3b8; font-size: 11px; margin-left: 6px;'>0.0%</span>"
+                                    badge = ":gray[0.0%]"
                             else:
-                                badge = "<span style='color: #94a3b8; font-size: 11px; margin-left: 6px;'>Base</span>"
+                                badge = ":gray[Base]"
                                 
                             val_anterior = val_actual
                             
-                            rows_html += f"""
-                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #1a2639;">
-                                    <span style="color: #8b9bb4; font-weight: 500;">Año {anio_actual}:</span>
-                                    <div style="text-align: right;">
-                                        <span style="color: #ffffff; font-weight: 600;">{val_actual:,.2f}</span>{badge}
-                                    </div>
-                                </div>
-                            """
-                        
-                        st.markdown(f"""
-                            <div style="background-color: #1e293b; border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #334155;">
-                                <div style="font-size: 14px; font-weight: bold; color: #d4af37; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 6px; text-transform: uppercase;">📊 {m_label}</div>
-                                {rows_html}
-                            </div>
-                        """, unsafe_allow_html=True)
+                            # Uso de columnas nativas dentro del contenedor para alinear perfectamente sin HTML
+                            rc1, rc2 = st.columns([1, 1.3])
+                            with rc1:
+                                st.markdown(f"**Año {anio_actual}:**")
+                            with rc2:
+                                st.markdown(f"<div style='text-align: right;'>{val_actual:,.2f} {badge}</div>", unsafe_allow_html=True)
                 
         else:
             st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Prueba seleccionando un ciclo diferente o limpiando el filtro de municipio.")
