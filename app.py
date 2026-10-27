@@ -25,20 +25,20 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tarjetas Compactas y Estéticas por Variable (Diseño Fluido) */
+    /* Tarjetas Compactas Estilizadas sin Espacios Vacíos */
     .metric-card {
         background-color: #1e293b;
         border: 1px solid #334155;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .metric-card-title {
-        font-size: 15px;
+        font-size: 14px;
         font-weight: bold;
         color: #d4af37 !important;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
         border-bottom: 1px solid #334155;
         padding-bottom: 6px;
         text-transform: uppercase;
@@ -48,12 +48,13 @@ st.markdown("""
         justify-content: space-between;
         align-items: center;
         font-size: 13px;
-        padding: 6px 0;
-        border-bottom: 1px dashed #283548;
+        padding: 4px 0;
+        border-bottom: 1px dashed #1a2639;
     }
     .year-row-compact:last-child { border-bottom: none; }
     .year-label { color: #8b9bb4; font-weight: 500; }
-    .year-value { color: #ffffff; font-weight: 600; }
+    .year-value-container { text-align: right; }
+    .year-val { color: #ffffff; font-weight: 600; }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
@@ -247,7 +248,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto y Estético por Variable ---
+            # --- Resumen Compacto Sin Espacios Excesivos ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -255,7 +256,6 @@ elif cultivo_input:
             for idx, m_label in enumerate(cols_to_plot):
                 target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
                 with target_col:
-                    # Construcción compacta en HTML puro dentro de una tarjeta limpia
                     rows_html = ""
                     val_anterior = None
                     
@@ -266,22 +266,21 @@ elif cultivo_input:
                         if val_anterior is not None and val_anterior != 0:
                             var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
                             if var_pct > 0:
-                                badge = f"<span style='color: #4ade80; font-size: 11px; font-weight: 500;'>▲ +{var_pct:.1f}%</span>"
+                                badge = f"<span style='color: #4ade80; font-size: 11px; margin-left: 6px;'>▲ +{var_pct:.1f}%</span>"
                             elif var_pct < 0:
-                                badge = f"<span style='color: #f87171; font-size: 11px; font-weight: 500;'>▼ {var_pct:.1f}%</span>"
+                                badge = f"<span style='color: #f87171; font-size: 11px; margin-left: 6px;'>▼ {var_pct:.1f}%</span>"
                             else:
-                                badge = "<span style='color: #94a3b8; font-size: 11px; font-weight: 500;'>0.0%</span>"
+                                badge = "<span style='color: #94a3b8; font-size: 11px; margin-left: 6px;'>0.0%</span>"
                         else:
-                            badge = "<span style='color: #94a3b8; font-size: 11px; font-weight: 500;'>Base</span>"
+                            badge = "<span style='color: #94a3b8; font-size: 11px; margin-left: 6px;'>Base</span>"
                             
                         val_anterior = val_actual
                         
                         rows_html += f"""
-                            <div class='year-row-compact'>
-                                <span class='year-label'>Año {anio_actual}</span>
-                                <div>
-                                    <span class='year-value'>{val_actual:,.2f}</span>
-                                    <span style='margin-left: 8px;'>{badge}</span>
+                            <div class="year-row-compact">
+                                <span class="year-label">Año {anio_actual}:</span>
+                                <div class="year-value-container">
+                                    <span class="year-val">{val_actual:,.2f}</span>{badge}
                                 </div>
                             </div>
                         """
