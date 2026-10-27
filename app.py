@@ -25,6 +25,36 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
+    /* Tarjetas Compactas y Estéticas por Variable */
+    .metric-card {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .metric-card-title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #d4af37 !important;
+        margin-bottom: 6px;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 4px;
+        text-transform: uppercase;
+    }
+    .year-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        padding: 2px 0;
+        border-bottom: 1px dashed #1a2639;
+    }
+    .year-row:last-child { border-bottom: none; }
+    .year-name { color: #8b9bb4; }
+    .year-val { color: #ffffff; font-weight: 600; }
+    
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
@@ -113,7 +143,6 @@ elif cultivo_input:
     
     metrics_sql = ", ".join(select_metrics)
 
-    # Consulta con coincidencias parciales ILIKE para ciclos y modalidades para evitar bloqueos por formato de texto
     query = f"""
     SELECT 
         a.anio, 
@@ -218,14 +247,14 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen con Componentes Nativos (Sin HTML expuesto) y % Variación ---
+            # --- Resumen Compacto con Componentes Nativos y % Variación (Corregido para 1 o más variables) ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
             cols_metric_cards = st.columns(len(cols_to_plot))
             for idx, m_label in enumerate(cols_to_plot):
-                target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
-                with target_col:
+                # Se extrae explícitamente el contenedor de la columna por su índice, evitando errores si es 1 o varias
+                with cols_metric_cards[idx]:
                     with st.container(border=True):
                         st.markdown(f"<h5 style='color: #d4af37; margin-bottom: 10px;'>📊 {m_label}</h5>", unsafe_allow_html=True)
                         
