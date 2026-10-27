@@ -110,7 +110,6 @@ with c8:
 
 st.markdown("---")
 
-# Inicializamos una bandera para el estado de los datos
 datos_disponibles = False
 
 # -----------------------------------------------------------------------------
@@ -183,7 +182,7 @@ elif cultivo_input:
         df = conn.query(query, params=params)
         
         if not df.empty:
-            datos_disponibles = True # Bandera para habilitar la generacion de mapas
+            datos_disponibles = True 
             cols_to_plot = []
             for m_label in metricas_seleccionadas:
                 col_db = columnas_metricas[m_label]
@@ -236,7 +235,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto con Markdown Nativo (Corregido) ---
+            # --- Resumen Compacto con HTML y CSS Nativo (Corrección de Colores) ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -252,24 +251,30 @@ elif cultivo_input:
                             val_actual = row[m_label]
                             anio_actual = int(row["anio"])
                             
+                            # Uso estricto de estilos CSS para los colores
                             if val_anterior is not None and val_anterior != 0:
                                 var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
                                 if var_pct > 0:
-                                    badge = f":green[▲ +{var_pct:.1f}%]"
+                                    badge = f"<span style='color: #4ade80; font-weight: 600; margin-left: 6px;'>▲ +{var_pct:.1f}%</span>"
                                 elif var_pct < 0:
-                                    badge = f":red[▼ {var_pct:.1f}%]"
+                                    badge = f"<span style='color: #f87171; font-weight: 600; margin-left: 6px;'>▼ {var_pct:.1f}%</span>"
                                 else:
-                                    badge = ":gray[0.0%]"
+                                    badge = "<span style='color: #94a3b8; font-weight: 600; margin-left: 6px;'>0.0%</span>"
                             else:
-                                badge = ":gray[Base]"
+                                badge = "<span style='color: #94a3b8; font-weight: 600; margin-left: 6px;'>Base</span>"
                                 
                             val_anterior = val_actual
                             
-                            rc1, rc2 = st.columns([1, 1.3])
-                            with rc1:
-                                st.markdown(f"**Año {anio_actual}:**")
-                            with rc2:
-                                st.markdown(f"<div style='text-align: right;'>{val_actual:,.2f} {badge}</div>", unsafe_allow_html=True)
+                            # Generación del HTML para alinear a la izquierda y derecha en la misma línea
+                            fila_html = f"""
+                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px;'>
+                                <span style='color: #8b9bb4; font-weight: bold;'>Año {anio_actual}:</span>
+                                <div style='text-align: right;'>
+                                    <span style='color: #ffffff; font-weight: bold;'>{val_actual:,.2f}</span>{badge}
+                                </div>
+                            </div>
+                            """
+                            st.markdown(fila_html, unsafe_allow_html=True)
                 
         else:
             st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros.")
@@ -316,7 +321,7 @@ if btn_mapa_rapido:
         st.error("⚠️ No se encontraron los archivos 'geo_estados.json' o 'geo_municipios.json' en el repositorio.")
     else:
         metrica_activa = metricas_seleccionadas[0]
-        anio_mapa = int(anios_mapa[-1]) # Tomamos el último año seleccionado para el mapa
+        anio_mapa = int(anios_mapa[-1])
         
         with st.spinner("🗺️ Renderizando mapa interactivo en tiempo real..."):
             st.markdown("---")
@@ -384,12 +389,8 @@ if btn_ia_completo:
         prompt_agente += f" {rango_txt}. Nivel requerido para el reporte: {nivel.lower()}."
         prompt_agente += " Exporta a excel y devuelve el Análisis Agroclimático textual."
         
-        # En esta opción, el Agente no genera el mapa de imagen para ahorrar tiempo y evitar Timeouts, 
-        # ya que el usuario puede usar el mapa interactivo rápido.
-        
         with st.spinner("🧠 El Agente SIACON está analizando el clima, sequía y generando el reporte..."):
             try:
-                # El Timeout se incrementó a 900 (15 minutos) como medida de seguridad
                 respuesta = requests.post(API_URL, json={"pregunta": prompt_agente}, timeout=900)
                 datos = respuesta.json()
                 
