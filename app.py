@@ -238,7 +238,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto Agrupado por Variable con Variación % ---
+            # --- Resumen Agrupado por Variable (Versión Nativa Optimizada) ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -246,43 +246,35 @@ elif cultivo_input:
             for idx, m_label in enumerate(cols_to_plot):
                 target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
                 with target_col:
-                    years_html = ""
-                    val_anterior = None
-                    
-                    for _, row in df_resumen.iterrows():
-                        val_actual = row[m_label]
-                        anio_actual = int(row["anio"])
+                    # Contenedor nativo con estilo visual limpio
+                    with st.container(border=True):
+                        st.markdown(f"<h5 style='color: #d4af37; margin-bottom: 10px;'>📊 {m_label}</h5>", unsafe_allow_html=True)
                         
-                        # Cálculo del porcentaje de variación
-                        if val_anterior is not None and val_anterior != 0:
-                            var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
-                            if var_pct > 0:
-                                var_badge = f'<span class="var-badge-pos">▲ +{var_pct:.1f}%</span>'
-                            elif var_pct < 0:
-                                var_badge = f'<span class="var-badge-neg">▼ {var_pct:.1f}%</span>'
-                            else:
-                                var_badge = f'<span class="var-badge-neu">0.0%</span>'
-                        else:
-                            var_badge = f'<span class="var-badge-neu">Base</span>'
+                        val_anterior = None
+                        for _, row in df_resumen.iterrows():
+                            val_actual = row[m_label]
+                            anio_actual = int(row["anio"])
                             
-                        val_anterior = val_actual
-                        
-                        years_html += f'''
-                            <div class="year-row">
-                                <span class="year-name">Año {anio_actual}:</span>
-                                <div>
-                                    <span class="year-val">{val_actual:,.2f}</span> 
-                                    <span style="margin-left: 5px;">{var_badge}</span>
-                                </div>
-                            </div>
-                        '''
-                    
-                    st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-card-title">📊 {m_label}</div>
-                            {years_html}
-                        </div>
-                    """, unsafe_allow_html=True)
+                            # Cálculo del porcentaje de variación
+                            if val_anterior is not None and val_anterior != 0:
+                                var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
+                                if var_pct > 0:
+                                    badge = f"▲ +{var_pct:.1f}%"
+                                elif var_pct < 0:
+                                    badge = f"▼ {var_pct:.1f}%"
+                                else:
+                                    badge = "0.0%"
+                            else:
+                                badge = "Base"
+                                
+                            val_anterior = val_actual
+                            
+                            # Fila limpia utilizando columnas nativas de Streamlit
+                            col_y1, col_y2 = st.columns([1.2, 1])
+                            with col_y1:
+                                st.markdown(f"<span style='color: #8b9bb4; font-size: 13px;'>Año {anio_actual}:</span>", unsafe_allow_html=True)
+                            with col_y2:
+                                st.markdown(f"<div style='text-align: right; font-size: 13px; font-weight: 600;'>{val_actual:,.2f} <span style='font-size: 11px; margin-left: 4px;'>{badge}</span></div>", unsafe_allow_html=True)
                 
         else:
             st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Prueba seleccionando un ciclo diferente o limpiando el filtro de municipio.")
