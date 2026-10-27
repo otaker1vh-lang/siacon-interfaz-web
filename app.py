@@ -25,35 +25,35 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tarjetas Compactas y Estéticas por Variable */
+    /* Tarjetas Compactas y Estéticas por Variable (Diseño Fluido) */
     .metric-card {
         background-color: #1e293b;
         border: 1px solid #334155;
-        border-radius: 6px;
-        padding: 10px 12px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .metric-card-title {
-        font-size: 14px;
+        font-size: 15px;
         font-weight: bold;
         color: #d4af37 !important;
-        margin-bottom: 6px;
+        margin-bottom: 12px;
         border-bottom: 1px solid #334155;
-        padding-bottom: 4px;
+        padding-bottom: 6px;
         text-transform: uppercase;
     }
-    .year-row {
+    .year-row-compact {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-size: 12px;
-        padding: 2px 0;
-        border-bottom: 1px dashed #1a2639;
+        font-size: 13px;
+        padding: 6px 0;
+        border-bottom: 1px dashed #283548;
     }
-    .year-row:last-child { border-bottom: none; }
-    .year-name { color: #8b9bb4; }
-    .year-val { color: #ffffff; font-weight: 600; }
+    .year-row-compact:last-child { border-bottom: none; }
+    .year-label { color: #8b9bb4; font-weight: 500; }
+    .year-value { color: #ffffff; font-weight: 600; }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
@@ -247,40 +247,51 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto con Componentes Nativos y % Variación (Corregido para 1 o más variables) ---
+            # --- Resumen Compacto y Estético por Variable ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
             cols_metric_cards = st.columns(len(cols_to_plot))
             for idx, m_label in enumerate(cols_to_plot):
-                # Se extrae explícitamente el contenedor de la columna por su índice, evitando errores si es 1 o varias
-                with cols_metric_cards[idx]:
-                    with st.container(border=True):
-                        st.markdown(f"<h5 style='color: #d4af37; margin-bottom: 10px;'>📊 {m_label}</h5>", unsafe_allow_html=True)
+                target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
+                with target_col:
+                    # Construcción compacta en HTML puro dentro de una tarjeta limpia
+                    rows_html = ""
+                    val_anterior = None
+                    
+                    for _, row in df_resumen.iterrows():
+                        val_actual = row[m_label]
+                        anio_actual = int(row["anio"])
                         
-                        val_anterior = None
-                        for _, row in df_resumen.iterrows():
-                            val_actual = row[m_label]
-                            anio_actual = int(row["anio"])
-                            
-                            if val_anterior is not None and val_anterior != 0:
-                                var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
-                                if var_pct > 0:
-                                    badge = f"<span style='color: #4ade80;'>▲ +{var_pct:.1f}%</span>"
-                                elif var_pct < 0:
-                                    badge = f"<span style='color: #f87171;'>▼ {var_pct:.1f}%</span>"
-                                else:
-                                    badge = "<span style='color: #94a3b8;'>0.0%</span>"
+                        if val_anterior is not None and val_anterior != 0:
+                            var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
+                            if var_pct > 0:
+                                badge = f"<span style='color: #4ade80; font-size: 11px; font-weight: 500;'>▲ +{var_pct:.1f}%</span>"
+                            elif var_pct < 0:
+                                badge = f"<span style='color: #f87171; font-size: 11px; font-weight: 500;'>▼ {var_pct:.1f}%</span>"
                             else:
-                                badge = "<span style='color: #94a3b8;'>Base</span>"
-                                
-                            val_anterior = val_actual
+                                badge = "<span style='color: #94a3b8; font-size: 11px; font-weight: 500;'>0.0%</span>"
+                        else:
+                            badge = "<span style='color: #94a3b8; font-size: 11px; font-weight: 500;'>Base</span>"
                             
-                            col_y1, col_y2 = st.columns([1.2, 1])
-                            with col_y1:
-                                st.markdown(f"<span style='color: #8b9bb4; font-size: 13px;'>Año {anio_actual}:</span>", unsafe_allow_html=True)
-                            with col_y2:
-                                st.markdown(f"<div style='text-align: right; font-size: 13px; font-weight: 600;'>{val_actual:,.2f} <span style='font-size: 11px; margin-left: 4px;'>{badge}</span></div>", unsafe_allow_html=True)
+                        val_anterior = val_actual
+                        
+                        rows_html += f"""
+                            <div class='year-row-compact'>
+                                <span class='year-label'>Año {anio_actual}</span>
+                                <div>
+                                    <span class='year-value'>{val_actual:,.2f}</span>
+                                    <span style='margin-left: 8px;'>{badge}</span>
+                                </div>
+                            </div>
+                        """
+                    
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-card-title">📊 {m_label}</div>
+                            {rows_html}
+                        </div>
+                    """, unsafe_allow_html=True)
                 
         else:
             st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Prueba seleccionando un ciclo diferente o limpiando el filtro de municipio.")
