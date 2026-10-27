@@ -1,5 +1,6 @@
 streamlit
 requests
 pandas
-plotly
-openpyxl
+psycopg2-binary
+SQLAlchemy
+requirements.txt

@@ -1,206 +1,190 @@
 import streamlit as st
-import requests
 import pandas as pd
+import plotly.express as px
+import requests
 
-# Configuración de página simulando el modo oscuro
+# -----------------------------------------------------------------------------
+# 1. CONFIGURACIÓN Y ESTILOS
+# -----------------------------------------------------------------------------
 st.set_page_config(page_title="Inteligencia Geoespacial SIACON", page_icon="🌱", layout="wide")
 
-# Estilos CSS
 st.markdown("""
 <style>
     .stApp { background-color: #0b1325; color: #e2e8f0; }
     h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { color: #e2e8f0 !important; }
     .main-title { color: #ffffff !important; font-size: 26px; font-weight: 700; margin-bottom: 2px; }
     .subtitle { color: #8b9bb4 !important; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 25px; }
-    .nav-pills { font-size: 14px; color: #8b9bb4; margin-bottom: 30px; display: flex; gap: 20px; }
-    .nav-pill-active { background-color: #d4af37; color: #000; padding: 4px 16px; border-radius: 20px; font-weight: 600; }
-    .nav-pill-inactive { padding: 4px 16px; cursor: pointer; transition: color 0.3s; }
-    .nav-pill-inactive:hover { color: #ffffff; }
-    
-    /* Corrección de Inputs */
-    .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div { 
-        background-color: #1e293b !important; border: 1px solid #334155 !important; 
-    }
+    .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div { background-color: #1e293b !important; border: 1px solid #334155 !important; }
     input[type="text"] { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
     .stSelectbox div[data-baseweb="select"] div, .stMultiSelect div[data-baseweb="select"] div { color: #ffffff !important; }
     .stMultiSelect span[data-baseweb="tag"] { background-color: #2E7D32 !important; color: #ffffff !important; }
     .stMultiSelect span[data-baseweb="tag"] span { color: #ffffff !important; }
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
-
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
 
-# Navegación superior
-st.markdown('''
-<div class="nav-pills">
-    <span class="nav-pill-inactive">Avance agrícola</span>
-    <span class="nav-pill-active">Producción agrícola</span>
-</div>
-''', unsafe_allow_html=True)
-
 st.markdown('<div class="main-title">🌱 Inteligencia Geoespacial SIACON</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Generador de Reportes Agroclimáticos, Estadísticos y Cartográficos.</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Dashboard Dinámico y Generador de Reportes Agroclimáticos.</div>', unsafe_allow_html=True)
 
-# 1. Primera fila de filtros
+# -----------------------------------------------------------------------------
+# 2. CONEXIÓN DIRECTA A SUPABASE (CACHÉ AUTOMÁTICA)
+# -----------------------------------------------------------------------------
+# Requiere tener instalado: pip install psycopg2-binary SQLAlchemy
+conn = st.connection("supabase", type="sql", ttl=3600) # ttl=3600 guarda en caché por 1 hora
+
+# -----------------------------------------------------------------------------
+# 3. FILTROS DE INTERFAZ
+# -----------------------------------------------------------------------------
 st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
 c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
-    cultivo = st.text_input("🌾 CULTIVO Y VARIEDAD", placeholder="Ej: Maíz grano blanco...")
+    cultivo_input = st.text_input("🌾 CULTIVO", placeholder="Ej: Maíz grano")
 with c2:
-    lugar = st.text_input("📍 ESTADO O COBERTURA", placeholder="Ej: Nacional, Sinaloa...")
+    estado_input = st.text_input("📍 ESTADO (Opcional)", placeholder="Ej: Sinaloa")
 with c3:
     ciclos = st.multiselect("🌤️ CICLO", ["Otoño-Invierno", "Primavera-Verano", "Perennes"])
 with c4:
-    variables = st.multiselect(
-        "📊 VARIABLES",
-        [
-            "Superficie sembrada", "Superficie cosechada", "Superficie siniestrada",
-            "Producción", "Rendimiento", "Valor de la producción", "Precio medio rural",
-            "Índice de siniestralidad"
-        ],
-        default=["Producción", "Superficie sembrada"]
+    metrica_seleccionada = st.selectbox(
+        "📊 MÉTRICA",
+        ["Producción", "Superficie sembrada", "Superficie cosechada", "Superficie siniestrada", "Rendimiento", "Valor de la producción"]
     )
 with c5:
-    anios = st.multiselect("📅 AÑOS A CONSULTAR", [str(y) for y in range(2015, 2026)], default=["2018", "2025"])
+    anios = st.slider("📅 RANGO DE AÑOS", 2015, 2025, (2018, 2025))
 
-# 2. Segunda fila de parámetros
-st.markdown("<h4 style='color: #d4af37 !important; margin-top: 20px;'>2. Parámetros y Cartografía</h4>", unsafe_allow_html=True)
-c6, c7, c8, c9, c10 = st.columns(5)
-with c6:
-    modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"])
-with c7:
-    nivel = st.selectbox("🌐 NIVEL", ["Municipal", "Estatal", "Nacional"])
-with c8:
-    st.write("") 
-    generar_mapa = st.checkbox("🗺️ GENERAR MAPA", value=True)
-with c9:
-    anios_mapa = st.multiselect(
-        "📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)],
-        default=["2022", "2025"], disabled=not generar_mapa
-    )
-with c10:
-    tipo_etiqueta = st.selectbox(
-        "🏷️ ETIQUETAS",
-        ["Ambos (Número y Nombre)", "Solo Nombre", "Solo Número", "Ninguno"],
-        disabled=not generar_mapa
-    )
+# Diccionario para mapear la métrica visual a la columna real de la base de datos
+columnas_metricas = {
+    "Producción": "volumenproduccion",
+    "Superficie sembrada": "sembrada",
+    "Superficie cosechada": "cosechada",
+    "Superficie siniestrada": "siniestrada",
+    "Rendimiento": "rendimiento",
+    "Valor de la producción": "valorproduccion"
+}
+columna_sql = columnas_metricas[metrica_seleccionada]
+
+# -----------------------------------------------------------------------------
+# 4. CAPA DE VISUALIZACIÓN INMEDIATA (SQL DIRECTO)
+# -----------------------------------------------------------------------------
+if cultivo_input:
+    # Construcción dinámica de la consulta SQL hacia las tablas de Supabase
+    query = f"""
+    SELECT 
+        a.anio, 
+        e.nomestado as estado,
+        SUM(a.{columna_sql}) as valor
+    FROM agro_cierre_estatal a
+    JOIN cat_cultivo c ON a.idcultivo = c.idcultivo
+    JOIN cat_estado e ON a.idestado = e.idestado
+    WHERE c.nomcultivo ILIKE :cultivo
+    AND a.anio BETWEEN :anio_inicio AND :anio_fin
+    """
+    params = {
+        "cultivo": f"%{cultivo_input}%",
+        "anio_inicio": anios[0],
+        "anio_fin": anios[1]
+    }
+    
+    if estado_input and estado_input.lower() not in ["nacional", "todo mexico"]:
+        query += " AND e.nomestado ILIKE :estado"
+        params["estado"] = f"%{estado_input}%"
+        
+    query += " GROUP BY a.anio, e.nomestado ORDER BY a.anio"
+
+    try:
+        # Ejecución ultrarrápida contra Supabase
+        df = conn.query(query, params=params)
+        
+        if not df.empty:
+            # Renderizado interactivo con Plotly
+            st.markdown(f"### 📈 Evolución de {metrica_seleccionada}")
+            
+            # Si hay un estado específico, coloreamos por estado, si no, mostramos el total nacional en la gráfica
+            if not estado_input or estado_input.lower() in ["nacional", "todo mexico"]:
+                df_plot = df.groupby("anio")["valor"].sum().reset_index()
+                fig = px.line(df_plot, x="anio", y="valor", markers=True)
+            else:
+                fig = px.line(df, x="anio", y="valor", color="estado", markers=True)
+                
+            fig.update_layout(
+                template="plotly_dark",
+                plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
+                font=dict(color="#8b9bb4"), title_font=dict(size=18, color="#ffffff"),
+                xaxis_title="Año (Ciclo Agrícola)", yaxis_title=metrica_seleccionada,
+                margin=dict(l=40, r=40, t=20, b=40)
+            )
+            fig.update_traces(line=dict(width=3), marker=dict(size=8))
+            
+            # Se muestra instantáneamente sin invocar al agente
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No se encontraron registros para los filtros seleccionados.")
+    except Exception as e:
+        st.warning(f"Error consultando la base de datos: {e}")
 
 st.markdown("---")
+
+# -----------------------------------------------------------------------------
+# 5. CAPA DE INTELIGENCIA Y CARTOGRAFÍA (LLM Y CONTENEDOR EN CLOUD RUN)
+# -----------------------------------------------------------------------------
+st.markdown("<h4 style='color: #d4af37 !important;'>Generación de Entregables (Agente SIACON)</h4>", unsafe_allow_html=True)
+st.caption("Utiliza este módulo solo cuando requieras cruzar coordenadas de sequía, descargar matrices completas en Excel y generar la cartografía verde de alto contraste.")
+
 API_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/consulta"
 BASE_FILE_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/archivos/"
 
-if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_container_width=True):
-    if not lugar or not cultivo:
-        st.error("⚠️ Llena 'Estado/Cobertura' y 'Cultivo'.")
-    elif not variables or not anios:
-        st.error("⚠️ Selecciona al menos un Año y una Variable.")
+if st.button("🧠 Ejecutar Análisis Profundo (IA, GDD y Mapas)", type="primary"):
+    if not cultivo_input:
+        st.error("⚠️ Define al menos el 'Cultivo' en la parte superior.")
     else:
-        etiqueta_final = {
-            "Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre",
-            "Solo Número": "numero", "Ninguno": "ninguno"
-        }[tipo_etiqueta]
+        # Construimos un prompt natural para el LLM basado en los mismos filtros
+        rango_txt = f"del año {anios[0]} al {anios[1]}"
+        cobertura = estado_input if estado_input else "Nacional"
+        prompt_agente = f"Genera un reporte de {metrica_seleccionada.lower()} del cultivo {cultivo_input} en cobertura {cobertura}. {rango_txt}."
+        if ciclos: prompt_agente += f" Ciclos: {', '.join(ciclos)}."
+        prompt_agente += " Exporta a excel, genera el mapa comparativo del último año y devuelve el Análisis Agroclimático con GDD."
         
-        anios_int = sorted([int(a) for a in anios])
-        rango_anios_txt = f"del año {anios_int[0]} al {anios_int[-1]}" if len(anios_int) >= 2 else f"del año {anios_int[0]}"
-
-        prompt_construido = f"Genera un reporte de {', '.join(variables).lower()} del {cultivo} en cobertura {lugar} a nivel {nivel.lower()}"
-        if modalidades: prompt_construido += f", modalidad {', '.join(modalidades).lower()}"
-        if ciclos: prompt_construido += f", ciclo {', '.join(ciclos).lower()}"
-        
-        prompt_construido += f" {rango_anios_txt}. Exporta a excel e incluye la generación de gráficas correspondientes."
-        if generar_mapa and anios_mapa:
-            prompt_construido += f" Además genera un mapa comparativo por municipio de producción de los años {', '.join(anios_mapa)}, configura ranking_anios en [{', '.join(anios_mapa)}] y etiqueta_mapa exactamente como '{etiqueta_final}'."
-        prompt_construido += " INSTRUCCIÓN ESTRICTA: Transcribe palabra por palabra el 'Análisis Agroclimático' generado."
-
-        with st.spinner("🧠 Procesando datos, dibujando gráficas y procesando cartografía..."):
+        with st.spinner("🧠 El Agente SIACON está analizando el clima, sequía y dibujando el shapefile..."):
             try:
-                respuesta = requests.post(API_URL, json={"pregunta": prompt_construido}, timeout=600)
+                respuesta = requests.post(API_URL, json={"pregunta": prompt_agente}, timeout=600)
                 datos = respuesta.json()
                 
                 if datos.get("ok"):
-                    st.success("✅ ¡Análisis Completado!")
                     archivos = datos.get("archivos", [])
-                    texto_respuesta = datos.get("respuesta", "Análisis completado.")
-                    
+                    texto_respuesta = datos.get("respuesta", "")
                     documentos = [f for f in archivos if f.lower().endswith((".xlsx", ".txt"))]
                     imagenes_mapas = [f for f in archivos if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
-
-                    # Diccionario de mapeo de métricas entre Front y Backend
-                    var_map = {
-                        "Superficie sembrada": "sembrada", "Superficie cosechada": "cosechada",
-                        "Superficie siniestrada": "siniestrada", "Producción": "produccion",
-                        "Rendimiento": "rendimiento", "Valor de la producción": "valorproduccion",
-                        "Precio medio rural": "preciomediorural", "Índice de siniestralidad": "indice_siniestralidad"
-                    }
-                    var_backend = var_map.get(variables[0], "produccion")
                     
-                    # ==========================================
-                    # GRÁFICA DIRECTA VÍA JSON (NATIVA DE STREAMLIT)
-                    # ==========================================
-                    json_doc = next((doc for doc in archivos if doc.lower().endswith(".json")), None)
-                    if json_doc:
-                        try:
-                            # 1. Obtenemos el JSON ligero
-                            datos_json = requests.get(f"{BASE_FILE_URL}{json_doc}").json()
-                            df_crudos = pd.DataFrame(datos_json)
-                            
-                            # 2. Agrupamos los datos por año
-                            if "anio" in df_crudos.columns and var_backend in df_crudos.columns:
-                                df_crudos["anio"] = df_crudos["anio"].astype(str)
-                                df_plot = df_crudos.groupby("anio")[var_backend].sum()
-                                
-                                # 3. Graficamos
-                                st.markdown(f"### 📈 Panel de Avance Agrícola (Tendencia de {variables[0]})")
-                                st.line_chart(df_plot, color="#d4af37", use_container_width=True)
-                        except Exception as e:
-                            st.warning(f"No se pudo renderizar la gráfica: {e}")
-
-                    # ==========================================
-                    # DATOS E INTELIGENCIA (DESCARGAS REALES)
-                    # ==========================================
                     res_col1, res_col2 = st.columns([1, 1.2])
-
                     with res_col1:
-                        st.markdown("### 📥 Descargar Entregables (Click)")
+                        st.markdown("### 📥 Descargar Matrices de Excel")
                         for doc in documentos:
                             nombre_doc = doc.split("/")[-1]
-                            doc_url = f"{BASE_FILE_URL}{doc}"
-                            # Botón de Descarga Real en lugar de Enlace
-                            try:
-                                doc_bytes = requests.get(doc_url).content
-                                mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if ".xlsx" in nombre_doc else "text/plain"
+                            if ".xlsx" in nombre_doc:
+                                doc_bytes = requests.get(f"{BASE_FILE_URL}{doc}").content
                                 st.download_button(
-                                    label=f"⬇️ Descargar {nombre_doc}",
+                                    label=f"⬇️ {nombre_doc}",
                                     data=doc_bytes,
                                     file_name=nombre_doc,
-                                    mime=mime,
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                     use_container_width=True
                                 )
-                            except:
-                                st.markdown(f"**[{nombre_doc}]({doc_url})**")
-
                     with res_col2:
-                        st.markdown("### 🧠 Reporte de Inteligencia")
+                        st.markdown("### 🧠 Reporte Agroclimático Ejecutivo")
                         if "ANÁLISIS AGROCLIMÁTICO Y ESTRATÉGICO" in texto_respuesta:
                             analisis_limpio = texto_respuesta.split("ANÁLISIS AGROCLIMÁTICO Y ESTRATÉGICO")[-1].strip("=\n ")
                             st.markdown(f'<div class="analisis-box">{analisis_limpio}</div>', unsafe_allow_html=True)
                         else:
                             st.info(texto_respuesta)
 
-                    # ==========================================
-                    # MAPAS HASTA EL FINAL
-                    # ==========================================
                     if imagenes_mapas:
                         st.markdown("---")
                         st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Comparativa</h2>", unsafe_allow_html=True)
                         for mapa in imagenes_mapas:
-                            mapa_url = f"{BASE_FILE_URL}{mapa}"
-                            st.image(mapa_url, use_container_width=True)
-                            st.markdown(f"<div style='text-align: center;'><a href='{mapa_url}' target='_blank'>⬇️ Abrir / Descargar Mapa en Alta Resolución</a></div>", unsafe_allow_html=True)
+                            st.image(f"{BASE_FILE_URL}{mapa}", use_container_width=True)
 
                 else:
-                    st.error(f"❌ Error en el motor: {datos.get('respuesta', 'Desconocido')}")
+                    st.error(f"❌ Error del agente: {datos.get('error', 'Desconocido')}")
             except Exception as e:
-                st.error(f"❌ Error de conexión: {e}")
+                st.error(f"❌ Error de conexión al contenedor: {e}")
