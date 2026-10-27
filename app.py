@@ -4,34 +4,73 @@ import requests
 # Configuración de página simulando el modo oscuro
 st.set_page_config(page_title="Inteligencia Geoespacial SIACON", page_icon="🌱", layout="wide")
 
-# Estilos CSS para replicar el diseño oscuro
+# Estilos CSS para replicar el diseño oscuro y arreglar la visibilidad de los inputs
 st.markdown("""
 <style>
+    /* Fondo principal estilo dashboard oscuro */
     .stApp { background-color: #0b1325; color: #e2e8f0; }
     h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { color: #e2e8f0 !important; }
+    
     .main-title { color: #ffffff !important; font-size: 26px; font-weight: 700; margin-bottom: 2px; }
     .subtitle { color: #8b9bb4 !important; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 25px; }
+    
+    /* Pestañas de navegación superiores */
     .nav-pills { font-size: 14px; color: #8b9bb4; margin-bottom: 30px; display: flex; gap: 20px; }
     .nav-pill-active { background-color: #d4af37; color: #000; padding: 4px 16px; border-radius: 20px; font-weight: 600; }
-    .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div { background-color: #1e293b; color: white; border: 1px solid #334155; }
+    .nav-pill-inactive { padding: 4px 16px; cursor: pointer; transition: color 0.3s; }
+    .nav-pill-inactive:hover { color: #ffffff; }
+    
+    /* -------------------------------------------------------------
+       CORRECCIÓN DE VISIBILIDAD DE TEXTO EN INPUTS Y SELECTORES
+       ------------------------------------------------------------- */
+    /* Fondos de los contenedores */
+    .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div { 
+        background-color: #1e293b !important; 
+        border: 1px solid #334155 !important; 
+    }
+    
+    /* Color del texto que el usuario escribe (Text Inputs) */
+    input[type="text"] {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+    
+    /* Color del texto en los selectores de Streamlit */
+    .stSelectbox div[data-baseweb="select"] div, 
+    .stMultiSelect div[data-baseweb="select"] div {
+        color: #ffffff !important;
+    }
+    
+    /* Estilos de las opciones elegidas en el multiselect (Tags) */
+    .stMultiSelect span[data-baseweb="tag"] {
+        background-color: #2E7D32 !important; /* Verde oscuro para hacer contraste */
+        color: #ffffff !important;
+    }
+    .stMultiSelect span[data-baseweb="tag"] span {
+        color: #ffffff !important;
+    }
+    
+    /* Color del menú desplegable cuando se abre */
+    div[role="listbox"] { background-color: #1e293b !important; }
+    div[role="option"] { color: #ffffff !important; }
+    /* ------------------------------------------------------------- */
+
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
 
-# Navegación superior simulada
+# Navegación superior (Precios y Exportaciones eliminados, Producción agrícola activa)
 st.markdown('''
 <div class="nav-pills">
-    <span>Precios</span>
-    <span>Exportaciones agrícolas</span>
-    <span class="nav-pill-active">Avance agrícola</span>
-    <span>Producción agrícola</span>
+    <span class="nav-pill-inactive">Avance agrícola</span>
+    <span class="nav-pill-active">Producción agrícola</span>
 </div>
 ''', unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">🌱 Inteligencia Geoespacial SIACON</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Generador de Reportes Agroclimáticos, Estadísticos y Cartográficos.</div>', unsafe_allow_html=True)
 
-# 1. Primera fila de filtros (Estructura de 5 columnas basada en la imagen)
+# 1. Primera fila de filtros
 st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
 c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
@@ -85,7 +124,6 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
     elif not variables or not anios:
         st.error("⚠️ Selecciona al menos un Año y una Variable.")
     else:
-        # Traducción de etiquetas
         etiqueta_final = {
             "Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre",
             "Solo Número": "numero", "Ninguno": "ninguno"
@@ -124,11 +162,9 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
                     archivos = datos.get("archivos", [])
                     texto_respuesta = datos.get("respuesta", "Análisis completado.")
                     
-                    # Separar archivos: Gráficas vs Mapas vs Documentos
                     documentos = [f for f in archivos if f.lower().endswith((".xlsx", ".txt"))]
                     imagenes = [f for f in archivos if f.lower().endswith((".jpg", ".png"))]
                     
-                    # El backend nombra los mapas iniciando con "Mapa_" 
                     imagenes_mapas = [img for img in imagenes if "mapa" in img.lower()]
                     imagenes_graficas = [img for img in imagenes if "mapa" not in img.lower()]
 
@@ -144,7 +180,6 @@ if st.button("🚀 Ejecutar Análisis Multidimensional", type="primary", use_con
                             icono = "📊" if nombre_doc.lower().endswith(".xlsx") else "📄"
                             st.markdown(f"{icono} **[{nombre_doc}]({BASE_FILE_URL}{doc})**")
                             
-                        # Si hay gráficas (no mapas), se muestran aquí arriba
                         if imagenes_graficas:
                             st.markdown("### 📈 Gráficas Analíticas")
                             for graf in imagenes_graficas:
