@@ -24,8 +24,31 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tabla Resumen */
-    .stDataFrame { margin-top: 10px; }
+    /* Tarjetas de Resumen Anual Estéticas */
+    .year-card {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .year-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #d4af37 !important;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 5px;
+    }
+    .metric-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .metric-name { color: #8b9bb4; }
+    .metric-val { color: #ffffff; font-weight: 600; }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
@@ -47,7 +70,6 @@ def cargar_catalogos():
         variedades = ["Todas"] + conn.query("SELECT DISTINCT nomvariedad FROM cat_variedad ORDER BY nomvariedad")["nomvariedad"].tolist()
         return estados, cultivos, variedades
     except Exception:
-        # Valores de respaldo seguros en caso de fallo de red
         return (
             ["Todos", "Sinaloa", "Sonora", "Michoacán", "Jalisco", "Zacatecas"], 
             ["Todos", "Maíz grano", "Frijol", "Sorgo grano", "Trigo grano"], 
@@ -84,9 +106,9 @@ with c4:
 
 c5, c6, c7, c8 = st.columns(4)
 with c5:
-    ciclos = st.multiselect("🌤️ CICLO", ["Otoño-Invierno", "Primavera-Verano", "Perennes"])
+    ciclos = st.multiselect("🌤️ CICLO", ["Otoño-Invierno", "Primavera-Verano", "Perennes"], default=[])
 with c6:
-    modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"])
+    modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"], default=[])
 with c7:
     metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S)", list(columnas_metricas.keys()), default=["Producción"])
 with c8:
@@ -100,11 +122,9 @@ st.markdown("---")
 if not metricas_seleccionadas:
     st.warning("⚠️ Selecciona al menos una métrica para visualizar los datos.")
 elif cultivo_input:
-    # 1. Preparar las métricas dinámicamente para la consulta
     select_metrics = []
     for m_label in metricas_seleccionadas:
         col_db = columnas_metricas[m_label]
-        # Aproximación rápida para el dashboard en tasas. Sum para volúmenes.
         if col_db in ['rendimiento', 'preciomediorural', 'indice_siniestralidad']:
             select_metrics.append(f"AVG(a.{col_db}) as {col_db}")
         else:
@@ -112,7 +132,6 @@ elif cultivo_input:
     
     metrics_sql = ", ".join(select_metrics)
 
-    # 2. Construcción de la consulta con Joins
     query = f"""
     SELECT 
         a.anio, 
@@ -143,10 +162,11 @@ elif cultivo_input:
         query += " AND m.nommunicipio ILIKE :municipio"
         params["municipio"] = f"%{municipio_input}%"
         
-    # Agregando filtros exactos de Ciclo y Modalidad
+    # Filtro flexible para ciclos: solo aplica si el usuario seleccionó alguno explícitamente
     if ciclos:
         ciclos_str = ", ".join([f"'{c}'" for c in ciclos])
         query += f" AND ci.nomciclo IN ({ciclos_str})"
+    # Filtro flexible para modalidades: solo aplica si el usuario seleccionó alguna explícitamente
     if modalidades:
         modalidades_str = ", ".join([f"'{mo}'" for mo in modalidades])
         query += f" AND mo.nommodalidad IN ({modalidades_str})"
@@ -157,7 +177,6 @@ elif cultivo_input:
         df = conn.query(query, params=params)
         
         if not df.empty:
-            # Reemplazar los nombres SQL por nombres visuales bonitos
             cols_to_plot = []
             for m_label in metricas_seleccionadas:
                 col_db = columnas_metricas[m_label]
@@ -166,15 +185,12 @@ elif cultivo_input:
             
             ultimo_anio = df["anio"].max()
             
-            # --- Gráficas Mejoradas ---
             g_col1, g_col2 = st.columns([2, 1])
             
             with g_col1:
                 st.markdown(f"### 📈 Evolución Temporal")
-                # Agrupamos por año para consolidar independientemente de los estados/municipios
                 df_plot_line = df.groupby("anio")[cols_to_plot].sum().reset_index()
                 
-                # Plotly acepta una lista en "y" para graficar varias líneas a la vez
                 fig_line = px.line(df_plot_line, x="anio", y=cols_to_plot, markers=True)
                 fig_line.update_layout(
                     template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
@@ -186,7 +202,6 @@ elif cultivo_input:
                 st.plotly_chart(fig_line, use_container_width=True)
                 
             with g_col2:
-                # Top Distribución: Usa solo la PRIMERA métrica seleccionada para clasificar
                 metrica_principal = cols_to_plot[0]
                 st.markdown(f"### 📊 Top {metrica_principal} ({ultimo_anio})")
                 df_last = df[df["anio"] == ultimo_anio]
@@ -201,15 +216,32 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Tabla Resumen por Año ---
+            # --- Resumen Anual en Contenedores Estéticos ---
             st.markdown("### 📋 Resumen por Año (Variables Seleccionadas)")
-            # Agrupamos los datos estrictamente por año mostrando los totales de ese año
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index()
-            # Formato bonito
-            st.dataframe(df_resumen.style.format(precision=2, thousands=","), use_container_width=True, hide_index=True)
+            
+            # Renderizamos tarjetas estéticas distribuidas en columnas (ej. 4 años por fila)
+            anios_unicos = sorted(df_resumen["anio"].unique(), reverse=True)
+            
+            # Mostramos en filas de hasta 4 columnas
+            cols_cards = st.columns(min(len(anios_unicos), 4))
+            for idx, row in df_resumen.iterrows():
+                col_target = cols_cards[idx % len(cols_cards)]
+                with col_target:
+                    metrics_html = ""
+                    for m_label in cols_to_plot:
+                        val = row[m_label]
+                        metrics_html += f'<div class="metric-row"><span class="metric-name">{m_label}:</span><span class="metric-val">{val:,.2f}</span></div>'
+                    
+                    st.markdown(f"""
+                        <div class="year-card">
+                            <div class="year-title">📅 Año {int(row['anio'])}</div>
+                            {metrics_html}
+                        </div>
+                    """, unsafe_allow_html=True)
                 
         else:
-            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros.")
+            st.info("No se encontraron registros en la Base de Datos para esta combinación exacta de filtros. Intenta ajustar el cultivo o limpiar los filtros de ciclo/modalidad.")
     except Exception as e:
         st.warning(f"Error consultando la base de datos: {e}")
 
@@ -235,7 +267,7 @@ with c12:
 API_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/consulta"
 BASE_FILE_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/archivos/"
 
-st.write("") # Espacio
+st.write("")
 
 if st.button("🚀 Ejecutar Análisis Profundo (IA, Sequía y Mapas)", type="primary", use_container_width=True):
     if not metricas_seleccionadas:
@@ -244,7 +276,6 @@ if st.button("🚀 Ejecutar Análisis Profundo (IA, Sequía y Mapas)", type="pri
         rango_txt = f"del año {anios[0]} al {anios[1]}"
         cobertura = estado_input if estado_input != "Todos" else "Nacional"
         
-        # Enviar TODAS las métricas solicitadas al agente
         metricas_agente = ", ".join(metricas_seleccionadas)
         
         prompt_agente = f"Genera un reporte de {metricas_agente.lower()} del cultivo {cultivo_input}"
@@ -294,7 +325,6 @@ if st.button("🚀 Ejecutar Análisis Profundo (IA, Sequía y Mapas)", type="pri
                         else:
                             st.info(texto_respuesta)
 
-                    # 6. Mostrar Mapa correspondiente inmediatamente al final
                     if imagenes_mapas:
                         st.markdown("---")
                         st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Generada</h2>", unsafe_allow_html=True)
