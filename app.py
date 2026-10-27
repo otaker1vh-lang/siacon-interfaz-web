@@ -25,39 +25,6 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* Tarjetas Compactas y Estéticas por Variable */
-    .metric-card {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 6px;
-        padding: 10px 12px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .metric-card-title {
-        font-size: 14px;
-        font-weight: bold;
-        color: #d4af37 !important;
-        margin-bottom: 6px;
-        border-bottom: 1px solid #334155;
-        padding-bottom: 4px;
-        text-transform: uppercase;
-    }
-    .year-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 12px;
-        padding: 2px 0;
-        border-bottom: 1px dashed #1a2639;
-    }
-    .year-row:last-child { border-bottom: none; }
-    .year-name { color: #8b9bb4; }
-    .year-val { color: #ffffff; font-weight: 600; }
-    .var-badge-pos { color: #4ade80; font-size: 11px; font-weight: 500; }
-    .var-badge-neg { color: #f87171; font-size: 11px; font-weight: 500; }
-    .var-badge-neu { color: #94a3b8; font-size: 11px; font-weight: 500; }
-    
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
@@ -76,15 +43,19 @@ def cargar_catalogos():
         estados = ["Todos"] + conn.query("SELECT DISTINCT nomestado FROM cat_estado ORDER BY nomestado")["nomestado"].tolist()
         cultivos = ["Todos"] + conn.query("SELECT DISTINCT nomcultivo FROM cat_cultivo ORDER BY nomcultivo")["nomcultivo"].tolist()
         variedades = ["Todas"] + conn.query("SELECT DISTINCT nomvariedad FROM cat_variedad ORDER BY nomvariedad")["nomvariedad"].tolist()
-        return estados, cultivos, variedades
+        ciclos_db = conn.query("SELECT DISTINCT nomciclo FROM cat_ciclo ORDER BY nomciclo")["nomciclo"].tolist()
+        modalidades_db = conn.query("SELECT DISTINCT nommodalidad FROM cat_modalidad ORDER BY nommodalidad")["nommodalidad"].tolist()
+        return estados, cultivos, variedades, ciclos_db, modalidades_db
     except Exception:
         return (
             ["Todos", "Sinaloa", "Sonora", "Michoacán", "Jalisco", "Zacatecas"], 
             ["Todos", "Maíz grano", "Frijol", "Sorgo grano", "Trigo grano"], 
-            ["Todas", "Blanco", "Amarillo"]
+            ["Todas", "Blanco", "Amarillo"],
+            ["Otoño-Invierno", "Primavera-Verano", "Perennes"],
+            ["Riego", "Temporal"]
         )
 
-lista_estados, lista_cultivos, lista_variedades = cargar_catalogos()
+lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalidades_db = cargar_catalogos()
 
 columnas_metricas = {
     "Producción": "volumenproduccion", 
@@ -114,9 +85,9 @@ with c4:
 
 c5, c6, c7, c8 = st.columns(4)
 with c5:
-    ciclos = st.multiselect("🌤️ CICLO", ["Otoño-Invierno", "Primavera-Verano", "Perennes"], default=[])
+    ciclos = st.multiselect("🌤️ CICLO", lista_ciclos_db, default=[])
 with c6:
-    modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"], default=[])
+    modalidades = st.multiselect("💧 MODALIDAD", lista_modalidades_db, default=[])
 with c7:
     metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S) [1 o 2 recomendadas]", list(columnas_metricas.keys()), default=["Producción"])
 with c8:
@@ -142,7 +113,7 @@ elif cultivo_input:
     
     metrics_sql = ", ".join(select_metrics)
 
-    # Consulta robusta utilizando LEFT JOIN para evitar descartar registros si un catálogo viene nulo
+    # Consulta con coincidencias parciales ILIKE para ciclos y modalidades para evitar bloqueos por formato de texto
     query = f"""
     SELECT 
         a.anio, 
@@ -174,11 +145,20 @@ elif cultivo_input:
         params["municipio"] = f"%{municipio_input}%"
         
     if ciclos:
-        ciclos_str = ", ".join([f"'{c}'" for c in ciclos])
-        query += f" AND ci.nomciclo IN ({ciclos_str})"
+        ciclo_conditions = []
+        for idx, cic in enumerate(ciclos):
+            key = f"ciclo_{idx}"
+            ciclo_conditions.append(f"ci.nomciclo ILIKE :{key}")
+            params[key] = f"%{cic}%"
+        query += f" AND ({' OR '.join(ciclo_conditions)})"
+        
     if modalidades:
-        modalidades_str = ", ".join([f"'{mo}'" for mo in modalidades])
-        query += f" AND mo.nommodalidad IN ({modalidades_str})"
+        mod_conditions = []
+        for idx, mod in enumerate(modalidades):
+            key = f"mod_{idx}"
+            mod_conditions.append(f"mo.nommodalidad ILIKE :{key}")
+            params[key] = f"%{mod}%"
+        query += f" AND ({' OR '.join(mod_conditions)})"
         
     query += " GROUP BY a.anio, e.nomestado, m.nommunicipio ORDER BY a.anio"
 
@@ -238,7 +218,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Agrupado por Variable (Versión Nativa Optimizada) ---
+            # --- Resumen con Componentes Nativos (Sin HTML expuesto) y % Variación ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -246,7 +226,6 @@ elif cultivo_input:
             for idx, m_label in enumerate(cols_to_plot):
                 target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
                 with target_col:
-                    # Contenedor nativo con estilo visual limpio
                     with st.container(border=True):
                         st.markdown(f"<h5 style='color: #d4af37; margin-bottom: 10px;'>📊 {m_label}</h5>", unsafe_allow_html=True)
                         
@@ -255,21 +234,19 @@ elif cultivo_input:
                             val_actual = row[m_label]
                             anio_actual = int(row["anio"])
                             
-                            # Cálculo del porcentaje de variación
                             if val_anterior is not None and val_anterior != 0:
                                 var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
                                 if var_pct > 0:
-                                    badge = f"▲ +{var_pct:.1f}%"
+                                    badge = f"<span style='color: #4ade80;'>▲ +{var_pct:.1f}%</span>"
                                 elif var_pct < 0:
-                                    badge = f"▼ {var_pct:.1f}%"
+                                    badge = f"<span style='color: #f87171;'>▼ {var_pct:.1f}%</span>"
                                 else:
-                                    badge = "0.0%"
+                                    badge = "<span style='color: #94a3b8;'>0.0%</span>"
                             else:
-                                badge = "Base"
+                                badge = "<span style='color: #94a3b8;'>Base</span>"
                                 
                             val_anterior = val_actual
                             
-                            # Fila limpia utilizando columnas nativas de Streamlit
                             col_y1, col_y2 = st.columns([1.2, 1])
                             with col_y1:
                                 st.markdown(f"<span style='color: #8b9bb4; font-size: 13px;'>Año {anio_actual}:</span>", unsafe_allow_html=True)
