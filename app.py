@@ -235,7 +235,7 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto con HTML y CSS Nativo (Corrección de Colores) ---
+            # --- Resumen Compacto con HTML y CSS Nativo ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -251,7 +251,6 @@ elif cultivo_input:
                             val_actual = row[m_label]
                             anio_actual = int(row["anio"])
                             
-                            # Uso estricto de estilos CSS para los colores
                             if val_anterior is not None and val_anterior != 0:
                                 var_pct = ((val_actual - val_anterior) / abs(val_anterior)) * 100
                                 if var_pct > 0:
@@ -265,7 +264,6 @@ elif cultivo_input:
                                 
                             val_anterior = val_actual
                             
-                            # Generación del HTML para alinear a la izquierda y derecha en la misma línea
                             fila_html = f"""
                             <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px;'>
                                 <span style='color: #8b9bb4; font-weight: bold;'>Año {anio_actual}:</span>
@@ -311,7 +309,7 @@ with col_btn1:
 with col_btn2:
     btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
 
-# ----------------- MAPA INTERACTIVO NATIVO -----------------
+# ----------------- MAPA INTERACTIVO (CORREGIDO A GRAPH_OBJECTS) -----------------
 if btn_mapa_rapido:
     if not generar_mapa or not anios_mapa:
         st.error("⚠️ Activa 'Generar Mapa' y selecciona al menos un año.")
@@ -346,21 +344,25 @@ if btn_mapa_rapido:
                     zoom_lvl = 6 if estado_input != "Todos" else 4
 
                 try:
-                    fig_mapa = px.choropleth_mapbox(
-                        df_plot_map,
+                    # Implementación directa usando plotly.graph_objects (go) para evitar errores de plotly.express
+                    fig_mapa = go.Figure(go.Choroplethmapbox(
                         geojson=geojson_usar,
-                        locations=columna_df,
+                        locations=df_plot_map[columna_df],
+                        z=df_plot_map[metrica_activa],
                         featureidkey=llave_geojson,
-                        color=metrica_activa,
-                        color_continuous_scale="Viridis",
-                        mapbox_style="carto-darkmatter",
-                        zoom=zoom_lvl, 
-                        center={"lat": 23.6345, "lon": -102.5528},
-                        opacity=0.7,
-                        hover_name=columna_df
-                    )
+                        colorscale="Viridis",
+                        marker_opacity=0.7,
+                        marker_line_width=0.5,
+                        text=df_plot_map[columna_df],
+                        hovertemplate="<b>%{text}</b><br>" + metrica_activa + ": %{z:,.2f}<extra></extra>"
+                    ))
                     
                     fig_mapa.update_layout(
+                        mapbox=dict(
+                            style="carto-darkmatter",
+                            zoom=zoom_lvl,
+                            center=dict(lat=23.6345, lon=-102.5528)
+                        ),
                         margin={"r":0, "t":0, "l":0, "b":0},
                         paper_bgcolor="#0b1325",
                         plot_bgcolor="#0b1325"
@@ -368,7 +370,7 @@ if btn_mapa_rapido:
                     
                     st.plotly_chart(fig_mapa, use_container_width=True)
                 except Exception as e:
-                     st.error(f"Error renderizando el mapa con Plotly: {e}")
+                     st.error(f"Error renderizando el mapa con Plotly Graph Objects: {e}")
 
 # ----------------- ANÁLISIS PROFUNDO (CLOUD RUN) -----------------
 if btn_ia_completo:
