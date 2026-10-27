@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
+import json
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN Y ESTILOS
@@ -54,6 +55,19 @@ def cargar_catalogos():
             ["Otoño-Invierno", "Primavera-Verano", "Perennes"],
             ["Riego", "Temporal"]
         )
+
+@st.cache_data(show_spinner=False)
+def cargar_mapas_geojson():
+    try:
+        with open("estados.geojson", "r", encoding="utf-8") as f:
+            geo_estados = json.load(f)
+        with open("municipios.geojson", "r", encoding="utf-8") as f:
+            geo_municipios = json.load(f)
+        return geo_estados, geo_municipios
+    except Exception as e:
+        return None, None
+
+geo_estados, geo_municipios = cargar_mapas_geojson()
 
 lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalidades_db = cargar_catalogos()
 
@@ -291,35 +305,51 @@ with col_btn2:
     btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
 
 if btn_mapa_rapido:
-    if not generar_mapa or not anios_mapa:
-        st.error("⚠️ Activa 'Generar Mapa' y selecciona al menos un año en 'Años Mapa'.")
+    if geo_estados is None or geo_municipios is None:
+        st.error("⚠️ No se encontraron los archivos 'estados.geojson' o 'municipios.geojson' en el repositorio.")
+    elif 'df' not in locals() or df.empty:
+        st.error("⚠️ Primero debes generar datos válidos en la Sección 1.")
     else:
-        etiqueta_final = {"Ambos (Número y Nombre)": "ambos", "Solo Nombre": "nombre", "Solo Número": "numero", "Ninguno": "ninguno"}[tipo_etiqueta]
-        anios_str = ", ".join(anios_mapa)
-        metrica_activa = metricas_seleccionadas[0] if metricas_seleccionadas else "Producción"
+        metrica_activa = metricas_seleccionadas[0]
         
-        prompt_mapa = f"Genera un mapa de {metrica_activa.lower()} del cultivo {cultivo_input} en cobertura {estado_input if estado_input != 'Todos' else 'Nacional'} para los años [{anios_str}], nivel_mapa='{nivel.lower()}', etiqueta_mapa='{etiqueta_final}'."
-        
-        with st.spinner("🗺️ Renderizando cartografía vectorial..."):
-            try:
-                res = requests.post(API_URL, json={"pregunta": prompt_mapa}, timeout=300)
-                dat = res.json()
-                if dat.get("ok"):
-                    archs = dat.get("archivos", [])
-                    mapas = [f for f in archs if f.lower().endswith((".jpg", ".png")) and "mapa" in f.lower()]
-                    if mapas:
-                        st.markdown("---")
-                        st.markdown("<h2 style='text-align: center;'>🗺️ Cartografía Generada</h2>", unsafe_allow_html=True)
-                        for m in mapas:
-                            m_url = f"{BASE_FILE_URL}{m}"
-                            st.image(m_url, use_container_width=True)
-                            st.markdown(f"<div style='text-align: center;'><a href='{m_url}' target='_blank'>⬇️ Ver Imagen en Alta Resolución</a></div>", unsafe_allow_html=True)
-                    else:
-                        st.info(dat.get("respuesta", "Mapa generado."))
-                else:
-                    st.error(f"❌ Error: {dat.get('error', 'Desconocido')}")
-            except Exception as ex:
-                st.error(f"❌ Error de conexión: {ex}")
+        with st.spinner("🗺️ Renderizando mapa interactivo en tiempo real..."):
+            st.markdown("---")
+            st.markdown(f"<h2 style='text-align: center;'>🗺️ Distribución de {metrica_activa}</h2>", unsafe_allow_html=True)
+            
+            # 1. Agrupar los datos según el nivel elegido (Estatal o Municipal)
+            if nivel == "Estatal" or estado_input == "Todos":
+                df_mapa = df.groupby("estado")[metrica_activa].sum().reset_index()
+                geojson_usar = geo_estados
+                llave_geojson = "properties.nomestado" # Cambia 'nomestado' por el nombre exacto de la columna en tu GeoJSON
+                columna_df = "estado"
+            else:
+                df_mapa = df.groupby("municipio")[metrica_activa].sum().reset_index()
+                geojson_usar = geo_municipios
+                llave_geojson = "properties.nommunicipio" # Cambia 'nommunicipio' por el nombre exacto de la columna en tu GeoJSON
+                columna_df = "municipio"
+
+            # 2. Dibujar el mapa interactivo con Plotly Mapbox
+            fig_mapa = px.choropleth_mapbox(
+                df_mapa,
+                geojson=geojson_usar,
+                locations=columna_df,
+                featureidkey=llave_geojson,
+                color=metrica_activa,
+                color_continuous_scale="Viridis",
+                mapbox_style="carto-darkmatter", # Estilo oscuro para que coincida con tu diseño
+                zoom=4 if nivel == "Estatal" else 6, 
+                center={"lat": 23.6345, "lon": -102.5528}, # Centro de México
+                opacity=0.7,
+                hover_name=columna_df
+            )
+            
+            fig_mapa.update_layout(
+                margin={"r":0, "t":0, "l":0, "b":0},
+                paper_bgcolor="#0b1325",
+                plot_bgcolor="#0b1325"
+            )
+            
+            st.plotly_chart(fig_mapa, use_container_width=True)
 
 if btn_ia_completo:
     if not metricas_seleccionadas:
