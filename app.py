@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
@@ -55,8 +56,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🌱 Inteligencia Geoespacial SIACON</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Dashboard Dinámico y Generador de Reportes Agroclimáticos.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌱 Dashboard Dinámico SIACON</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Generador de Reportes.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 2. CONEXIÓN Y CARGA DE CATÁLOGOS DESDE SUPABASE
@@ -93,7 +94,7 @@ columnas_metricas = {
 # -----------------------------------------------------------------------------
 # 3. SECCIÓN 1: FILTROS E INTERFAZ
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='color: #d4af37 !important;'>1. Variables</h4>", unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -111,19 +112,19 @@ with c5:
 with c6:
     modalidades = st.multiselect("💧 MODALIDAD", ["Riego", "Temporal"], default=[])
 with c7:
-    metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S) [Máximo 2 recomendadas]", list(columnas_metricas.keys()), default=["Producción"])
+    metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S) [1 o 2 recomendadas]", list(columnas_metricas.keys()), default=["Producción"])
 with c8:
     anios = st.slider("📅 RANGO DE AÑOS", 2015, 2025, (2018, 2025))
 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 4. CAPA DE VISUALIZACIÓN INMEDIATA (DASHBOARD CON DOBLE ENTRADA Y CONTENEDORES POR VARIABLE)
+# 4. CAPA DE VISUALIZACIÓN INMEDIATA (DASHBOARD)
 # -----------------------------------------------------------------------------
 if not metricas_seleccionadas:
     st.warning("⚠️ Selecciona al menos una métrica para visualizar los datos.")
 elif len(metricas_seleccionadas) > 2:
-    st.warning("⚠️ Para una mejor visualización de doble entrada, se recomienda seleccionar un máximo de 2 métricas simultáneas.")
+    st.warning("⚠️ Para una mejor visualización, se recomienda seleccionar un máximo de 2 métricas simultáneas.")
 elif cultivo_input:
     select_metrics = []
     for m_label in metricas_seleccionadas:
@@ -189,19 +190,16 @@ elif cultivo_input:
             g_col1, g_col2 = st.columns([2, 1])
             
             with g_col1:
-                st.markdown(f"### 📈 Evolución Temporal (Doble Entrada)")
+                st.markdown(f"### 📈 Evolución Temporal")
                 df_plot_line = df.groupby("anio")[cols_to_plot].sum().reset_index()
                 
-                # Implementación de Doble Entrada (Eje Y secundario si hay 2 variables)
+                # Gráfica adaptativa para 1 o 2 variables
                 if len(cols_to_plot) == 2:
                     fig_line = make_subplots(specs=[[{"secondary_y": True}]])
-                    
-                    # Variable 1 en eje izquierdo
                     fig_line.add_trace(
                         go.Scatter(x=df_plot_line["anio"], y=df_plot_line[cols_to_plot[0]], name=cols_to_plot[0], mode="lines+markers", line=dict(width=3, color="#d4af37")),
                         secondary_y=False,
                     )
-                    # Variable 2 en eje derecho
                     fig_line.add_trace(
                         go.Scatter(x=df_plot_line["anio"], y=df_plot_line[cols_to_plot[1]], name=cols_to_plot[1], mode="lines+markers", line=dict(width=3, color="#00ACC1")),
                         secondary_y=True,
@@ -234,14 +232,15 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Agrupado por Variable (Contenedores por Métrica) ---
+            # --- Resumen Agrupado por Variable ---
             st.markdown("### 📋 Resumen Detallado por Variable")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index()
             
-            # Un contenedor por cada métrica seleccionada
             cols_metric_cards = st.columns(len(cols_to_plot))
             for idx, m_label in enumerate(cols_to_plot):
-                with cols_metric_cards[idx]:
+                # Si es una sola columna, aseguramos que cols_metric_cards sea iterable correctamente
+                target_col = cols_metric_cards[idx] if len(cols_to_plot) > 1 else cols_metric_cards
+                with target_col:
                     years_html = ""
                     for _, row in df_resumen.iterrows():
                         val = row[m_label]
@@ -262,10 +261,10 @@ elif cultivo_input:
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA (SOLO MAPA RÁPIDO O IA)
+# 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros de Cartografía y Reporte de Inteligencia</h4>", unsafe_allow_html=True)
-st.caption("Genera mapas vectoriales inmediatos o solicita el análisis profundo con el Agente SIACON en Cloud Run.")
+st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros adicionales y Reporte</h4>", unsafe_allow_html=True)
+st.caption("Genera mapas inmediatos o solicita el análisis.")
 
 c9, c10, c11, c12 = st.columns(4)
 with c9:
@@ -297,7 +296,6 @@ if btn_mapa_rapido:
         anios_str = ", ".join(anios_mapa)
         metrica_activa = metricas_seleccionadas[0] if metricas_seleccionadas else "Producción"
         
-        # Petición dirigida exclusivamente a la herramienta de mapas del agente
         prompt_mapa = f"Genera un mapa de {metrica_activa.lower()} del cultivo {cultivo_input} en cobertura {estado_input if estado_input != 'Todos' else 'Nacional'} para los años [{anios_str}], nivel_mapa='{nivel.lower()}', etiqueta_mapa='{etiqueta_final}'."
         
         with st.spinner("🗺️ Renderizando cartografía vectorial..."):
