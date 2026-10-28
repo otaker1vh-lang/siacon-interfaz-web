@@ -438,9 +438,6 @@ if btn_mapa_rapido:
                                 hover_data={metrica_activa: ':,.2f', 'id': False, 'estado': False}
                             )
 
-                            # -------------------------------------------------------------
-                            # CORRECCIÓN: Bordes personalizados (Suaves Mun / Fuertes Est)
-                            # -------------------------------------------------------------
                             if nivel == "Municipal":
                                 fig_mapa.update_traces(marker_line_width=0.1, marker_line_color='rgba(255, 255, 255, 0.2)')
                                 
@@ -452,8 +449,8 @@ if btn_mapa_rapido:
                                         featureidkey="properties.NOMGEO",
                                         z=[0] * len(estados_nombres),
                                         colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
-                                        marker_line_width=1.2,
-                                        marker_line_color='#cbd5e1',
+                                        marker_line_width=2.5,
+                                        marker_line_color='#ffffff',
                                         showscale=False,
                                         hoverinfo='skip'
                                     )
@@ -517,8 +514,7 @@ if btn_mapa_rapido:
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            # CORRECCIÓN: Ajuste de layout de tabla [3.2, 1.8] para evitar scroll horizontal
-                            map_col, table_col = st.columns([3.2, 1.8])
+                            map_col, table_col = st.columns([4.0, 1.2])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
@@ -553,7 +549,7 @@ if btn_mapa_rapido:
                                     ).reset_index(drop=True)
                                     df_top_table.insert(0, "Lugar", [f"#{i}" for i in range(1, len(df_top_table) + 1)])
                                     
-                                    col_metrica_name = f"{metrica_activa} ({unidad})"
+                                    col_metrica_name = f"{metrica_activa}\n({unidad})"
                                     df_top_table.rename(
                                         columns={
                                             columna_df: columna_df.capitalize(),
@@ -570,15 +566,23 @@ if btn_mapa_rapido:
                                         .bar(subset=[col_metrica_name], color="#238443", vmin=0, vmax=max_top)
                                         .set_properties(
                                             subset=["Lugar"],
-                                            **{"color": "#f2c14e", "font-weight": "bold", "text-align": "center"}
+                                            **{"color": "#f2c14e", "font-weight": "bold", "text-align": "center", "font-size": "12px", "padding": "2px"}
                                         )
                                         .set_properties(
                                             subset=[col_metrica_name],
-                                            **{"color": "#0b1325", "font-weight": "bold"}
-                                        ),
+                                            **{"color": "#0b1325", "font-weight": "bold", "font-size": "12px", "padding": "2px"}
+                                        )
+                                        .set_properties(
+                                            subset=[columna_df.capitalize()],
+                                            **{"font-size": "12px", "padding": "2px"}
+                                        )
+                                        .set_table_styles([{
+                                            'selector': 'th',
+                                            'props': [('font-size', '12px'), ('text-align', 'center'), ('white-space', 'pre-wrap')]
+                                        }]),
                                         hide_index=True,
                                         use_container_width=True,
-                                        height=min(500, 42 * (len(df_top_table) + 1)) # CORRECCIÓN: Mayor altura para no generar scroll vertical
+                                        height=min(350, 32 * (len(df_top_table) + 1))
                                     )
                                 else:
                                     st.write("")
