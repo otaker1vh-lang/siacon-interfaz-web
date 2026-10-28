@@ -71,13 +71,15 @@ lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalida
 
 @st.cache_data(show_spinner=False)
 def cargar_mapas_geojson():
-    def corregir_winding_order(geojson_data):
-        for feature in geojson_data.get('features', []):
+    def procesar_geojson(geojson_data):
+        for i, feature in enumerate(geojson_data.get('features', [])):
+            # 1. Asignar ID único sintético a cada polígono para evitar agujeros negros
+            feature['id'] = str(i)
+            # 2. Corregir Winding Order
             geom = feature.get('geometry')
             if not geom: continue
             g_type = geom.get('type')
             coords = geom.get('coordinates', [])
-            
             if g_type == 'Polygon':
                 geom['coordinates'] = [anillo[::-1] for anillo in coords]
             elif g_type == 'MultiPolygon':
@@ -86,9 +88,9 @@ def cargar_mapas_geojson():
 
     try:
         with open("geo_estados.json", "r", encoding="utf-8") as f:
-            geo_estados = corregir_winding_order(json.load(f))
+            geo_estados = procesar_geojson(json.load(f))
         with open("geo_municipios.json", "r", encoding="utf-8") as f:
-            geo_municipios = corregir_winding_order(json.load(f))
+            geo_municipios = procesar_geojson(json.load(f))
         return geo_estados, geo_municipios
     except Exception as e:
         st.error(f"Error técnico detallado: {e}")
@@ -105,6 +107,17 @@ columnas_metricas = {
     "Valor de la producción": "valorproduccion",
     "Precio medio rural": "preciomediorural",
     "Índice de siniestralidad": "indice_siniestralidad"
+}
+
+unidades_metricas = {
+    "Producción": "ton", 
+    "Superficie sembrada": "ha", 
+    "Superficie cosechada": "ha",
+    "Superficie siniestrada": "ha", 
+    "Rendimiento": "ton/ha", 
+    "Valor de la producción": "miles de pesos",
+    "Precio medio rural": "$/ton",
+    "Índice de siniestralidad": "%"
 }
 
 # -----------------------------------------------------------------------------
@@ -354,55 +367,36 @@ if btn_mapa_rapido:
                     
                 for metrica_activa in metricas_seleccionadas:
                     with st.container():
-                        st.markdown(f"<h3 style='text-align: center; color: #e2e8f0; margin-bottom: 20px;'>🗺️ Distribución de {metrica_activa} ({anio_mapa})</h3>", unsafe_allow_html=True)
+                        unidad = unidades_metricas.get(metrica_activa, "")
+                        titulo_mapa = f"🗺️ Distribución de {metrica_activa} ({unidad}) - {anio_mapa}"
                         
-                        if nivel == "Estatal":
-                            df_plot_map = df_mapa_anio.groupby("estado")[metrica_activa].sum().reset_index()
-                            df_plot_map = df_plot_map[~df_plot_map["estado"].isin(["Nacional", "General"])]
-                            
-                            all_regions = list(set([f['properties'].get('NOMGEO', '') for f in geo_estados_data['features'] if f.get('properties')]))
-                            if estado_input == "Todos":
-                                df_all = pd.DataFrame({"estado": all_regions})
-                            else:
-                                df_all = pd.DataFrame({"estado": [estado_input]})
-                                
-                            df_plot_map = pd.merge(df_all, df_plot_map, on="estado", how='left').fillna({metrica_activa: 0})
-                            df_plot_map = df_plot_map.drop_duplicates(subset=["estado"])
-                            
-                            geojson_usar = geo_estados_data
-                            llave_geojson = "properties.NOMGEO"
-                            columna_df = "estado"
-                        else:
-                            df_plot_map = df_mapa_anio.groupby("municipio")[metrica_activa].sum().reset_index()
-                            df_plot_map = df_plot_map[~df_plot_map["municipio"].isin(["Nacional", "General"])]
-                            
-                            all_regions = list(set([f['properties'].get('NOMGEO', '') for f in geo_municipios_data['features'] if f.get('properties')]))
-                            if estado_input == "Todos":
-                                df_all = pd.DataFrame({"municipio": all_regions})
-                            else:
-                                try:
-                                    query_muns = f"SELECT nommunicipio FROM cat_municipio m JOIN cat_estado e ON m.idestado = e.idestado WHERE e.nomestado = '{estado_input}'"
-                                    df_muns = conn.query(query_muns)
-                                    df_all = pd.DataFrame({"municipio": df_muns['nommunicipio'].tolist()})
-                                except Exception:
-                                    df_all = pd.DataFrame({"municipio": df_plot_map["municipio"].unique()})
-                                    
-                            df_plot_map = pd.merge(df_all, df_plot_map, on="municipio", how='left').fillna({metrica_activa: 0})
-                            df_plot_map = df_plot_map.drop_duplicates(subset=["municipio"])
-                            
-                            geojson_usar = geo_municipios_data
-                            llave_geojson = "properties.NOMGEO" 
-                            columna_df = "municipio"
-
+                        st.markdown(f"<h3 style='text-align: center; color: #e2e8f0; margin-bottom: 20px;'>{titulo_mapa}</h3>", unsafe_allow_html=True)
+                        
+                        geojson_usar = geo_estados_data if nivel == "Estatal" else geo_municipios_data
+                        columna_df = "estado" if nivel == "Estatal" else "municipio"
+                        
+                        df_agrupado = df_mapa_anio.groupby(columna_df)[metrica_activa].sum().reset_index()
+                        df_agrupado = df_agrupado[~df_agrupado[columna_df].isin(["Nacional", "General"])]
+                        
+                        # Crear Dataframe desde las geometrías para que no queden huecos
+                        geo_records = []
+                        for f in geojson_usar['features']:
+                            geo_records.append({"id": f['id'], columna_df: f['properties'].get('NOMGEO', '')})
+                        df_all = pd.DataFrame(geo_records)
+                        
+                        # Merge por nombre y llenar vacíos con 0
+                        df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
+                        
                         try:
+                            # Trazamos usando el ID único para asegurar que el 100% de polígonos se pinten
                             fig_mapa = px.choropleth(
                                 df_plot_map,
                                 geojson=geojson_usar,
-                                locations=columna_df,
-                                featureidkey=llave_geojson,
+                                locations='id', 
                                 color=metrica_activa,
-                                color_continuous_scale="Teal",
-                                hover_name=columna_df
+                                color_continuous_scale="YlGn",
+                                hover_name=columna_df,
+                                hover_data={metrica_activa: ':,.2f', 'id': False}
                             )
                             
                             df_top = pd.DataFrame()
@@ -410,16 +404,12 @@ if btn_mapa_rapido:
                                 df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).head(10)
                                 lats, lons, texts = [], [], []
                                 
-                                is_avg = columnas_metricas[metrica_activa] in ['rendimiento', 'preciomediorural', 'indice_siniestralidad']
-                                fmt = ",.2f" if is_avg else ",.0f"
-                                
                                 for _, row in df_top.iterrows():
-                                    region_name = row[columna_df]
                                     val_num = row[metrica_activa]
-                                    txt = f"{region_name}: {val_num:{fmt}}"
+                                    txt = f"{row[columna_df]}: {val_num:,.2f} {unidad}"
                                         
                                     for f in geojson_usar['features']:
-                                        if f['properties'].get('NOMGEO', '') == region_name:
+                                        if f['id'] == row['id']:
                                             geom = f['geometry']
                                             coords = []
                                             if geom['type'] == 'Polygon':
@@ -459,7 +449,8 @@ if btn_mapa_rapido:
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            map_col, table_col = st.columns([3, 1])
+                            # Expandimos el ancho del mapa a proporción 4.5 a 1.5
+                            map_col, table_col = st.columns([4.5, 1.5])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
@@ -467,7 +458,17 @@ if btn_mapa_rapido:
                             with table_col:
                                 if tipo_etiqueta != "Ocultar" and not df_top.empty:
                                     st.markdown(f"#### 🏆 Top 10 {columna_df.capitalize()}")
-                                    st.dataframe(df_top[[columna_df, metrica_activa]], hide_index=True, use_container_width=True)
+                                    
+                                    # Preparar tabla limpia y formateada
+                                    df_top_table = df_top[[columna_df, metrica_activa]].copy()
+                                    col_metrica_name = f"{metrica_activa} ({unidad})"
+                                    df_top_table.rename(columns={columna_df: columna_df.capitalize(), metrica_activa: col_metrica_name}, inplace=True)
+                                    
+                                    st.dataframe(
+                                        df_top_table.style.format({col_metrica_name: "{:,.2f}"}), 
+                                        hide_index=True, 
+                                        use_container_width=True
+                                    )
                                 else:
                                     st.write("")
                                     
