@@ -142,7 +142,7 @@ with c6:
 with c7:
     metricas_seleccionadas = st.multiselect("📊 MÉTRICA(S) [1 o 2 recomendadas]", list(columnas_metricas.keys()), default=["Producción"])
 with c8:
-    anios = st.slider("📅 RANGO DE AÑOS", 2015, 2025, (2018, 2025))
+    anios = st.slider("📅 RANGO DE AÑOS", 2003, 2025, (2018, 2025))
 
 st.markdown("---")
 
@@ -257,7 +257,6 @@ elif cultivo_input:
                 st.plotly_chart(fig_line, use_container_width=True)
                 
             with g_col2:
-                # CORRECCIÓN: Bucle para generar un gráfico por CADA métrica seleccionada y ordenar de mayor a menor
                 for metrica_activa in cols_to_plot:
                     unidad = unidades_metricas.get(metrica_activa, "")
                     st.markdown(f"### 📊 Top {metrica_activa} ({unidad}) - {ultimo_anio}")
@@ -270,6 +269,7 @@ elif cultivo_input:
                         .sum()
                         .sort_values(metrica_activa, ascending=False)
                         .head(10)
+                        .sort_values(metrica_activa, ascending=True)
                     )
 
                     escala_top = [
@@ -294,7 +294,7 @@ elif cultivo_input:
                         xaxis_title="", yaxis_title="", showlegend=False,
                         coloraxis_showscale=False,
                         margin=dict(l=10, r=65, t=15, b=20),
-                        yaxis=dict(autorange="reversed"), # Coloca el #1 en la parte superior
+                        yaxis=dict(autorange="reversed"),
                         height=280 if len(cols_to_plot) > 1 else 450
                     )
                     st.plotly_chart(fig_bar, use_container_width=True)
@@ -357,7 +357,7 @@ with c10:
     st.write("") 
     generar_mapa = st.checkbox("🗺️ GENERAR MAPA", value=True)
 with c11:
-    anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024"], disabled=not generar_mapa)
+    anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2003, 2026)], default=["2024"], disabled=not generar_mapa)
 with c12:
     tipo_etiqueta = st.selectbox("🏷️ TOP 10 DESTACADOS", ["Mostrar Puntos y Tabla", "Ocultar"], disabled=not generar_mapa)
 
@@ -402,7 +402,10 @@ if btn_mapa_rapido:
                         geojson_usar = geo_estados_data if nivel == "Estatal" else geo_municipios_data
                         columna_df = "estado" if nivel == "Estatal" else "municipio"
                         
-                        df_agrupado = df_mapa_anio.groupby(columna_df)[metrica_activa].sum().reset_index()
+                        # Retenemos el nombre del estado en la agrupación a nivel municipal para poder mostrarlo
+                        group_cols = [columna_df, "estado"] if nivel == "Municipal" else [columna_df]
+                        
+                        df_agrupado = df_mapa_anio.groupby(group_cols)[metrica_activa].sum().reset_index()
                         df_agrupado = df_agrupado[~df_agrupado[columna_df].isin(["Nacional", "General"])]
                         
                         geo_records = []
@@ -412,15 +415,9 @@ if btn_mapa_rapido:
                         
                         df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
                         
-                        # Escala robusta para colores
-                        valores_positivos = pd.to_numeric(
-                            df_plot_map[metrica_activa], errors="coerce"
-                        ).fillna(0)
+                        valores_positivos = pd.to_numeric(df_plot_map[metrica_activa], errors="coerce").fillna(0)
                         valores_positivos = valores_positivos[valores_positivos > 0]
-                        limite_color = (
-                            float(valores_positivos.quantile(0.98))
-                            if not valores_positivos.empty else 1.0
-                        )
+                        limite_color = float(valores_positivos.quantile(0.98)) if not valores_positivos.empty else 1.0
                         limite_color = max(limite_color, 1e-9)
 
                         try:
@@ -440,34 +437,39 @@ if btn_mapa_rapido:
                                 ],
                                 range_color=(0, limite_color),
                                 hover_name=columna_df,
-                                hover_data={metrica_activa: ':,.2f', 'id': False}
+                                hover_data={metrica_activa: ':,.2f', 'id': False, 'estado': False}
                             )
                             
                             df_top = pd.DataFrame()
                             if tipo_etiqueta != "Ocultar":
-                                # CORRECCIÓN: Evitar municipios duplicados en la tabla por coincidencia de nombre (ej. Cuauhtémoc)
                                 df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).drop_duplicates(subset=[columna_df]).head(10)
                                 lats, lons, texts = [], [], []
                                 
                                 for _, row in df_top.iterrows():
                                     val_num = row[metrica_activa]
-                                    txt = f"{row[columna_df]}: {val_num:,.2f} {unidad}"
+                                    nombre_display = f"{row[columna_df]}, {row['estado']}" if nivel == "Municipal" and pd.notna(row.get('estado')) else str(row[columna_df])
+                                    txt = f"{nombre_display}: {val_num:,.2f} {unidad}"
                                         
                                     for f in geojson_usar['features']:
                                         if f['id'] == row['id']:
                                             geom = f['geometry']
-                                            coords = []
-                                            if geom['type'] == 'Polygon':
-                                                coords = geom['coordinates'][0]
-                                            elif geom['type'] == 'MultiPolygon':
-                                                coords = geom['coordinates'][0][0]
+                                            if geom:
+                                                all_lons, all_lats = [], []
                                                 
-                                            if coords:
-                                                lons_p = [c[0] for c in coords]
-                                                lats_p = [c[1] for c in coords]
-                                                lons.append(sum(lons_p)/len(lons_p))
-                                                lats.append(sum(lats_p)/len(lats_p))
-                                                texts.append(txt)
+                                                def extract_points(coords_list):
+                                                    if not coords_list: return
+                                                    if isinstance(coords_list[0], (int, float)):
+                                                        all_lons.append(coords_list[0])
+                                                        all_lats.append(coords_list[1])
+                                                    else:
+                                                        for item in coords_list:
+                                                            extract_points(item)
+                                                            
+                                                extract_points(geom.get('coordinates', []))
+                                                if all_lons and all_lats:
+                                                    lons.append((min(all_lons) + max(all_lons)) / 2)
+                                                    lats.append((min(all_lats) + max(all_lats)) / 2)
+                                                    texts.append(txt)
                                             break
                                             
                                 if lats and lons:
@@ -516,7 +518,14 @@ if btn_mapa_rapido:
                                 if tipo_etiqueta != "Ocultar" and not df_top.empty:
                                     st.markdown(f"#### 🏆 Top 10 {columna_df.capitalize()}")
                                     
-                                    df_top_table = df_top[[columna_df, metrica_activa]].copy()
+                                    df_top_table = df_top.copy()
+                                    if nivel == "Municipal" and "estado" in df_top_table.columns:
+                                        df_top_table[columna_df] = df_top_table.apply(
+                                            lambda r: f"{r[columna_df]}, {r['estado']}" if pd.notna(r.get("estado")) else r[columna_df], 
+                                            axis=1
+                                        )
+                                        
+                                    df_top_table = df_top_table[[columna_df, metrica_activa]]
                                     df_top_table = df_top_table.sort_values(
                                         metrica_activa, ascending=False
                                     ).reset_index(drop=True)
@@ -533,7 +542,6 @@ if btn_mapa_rapido:
                                     max_top = float(df_top_table[col_metrica_name].max()) if not df_top_table.empty else 0.0
                                     max_top = max(max_top, 1e-9)
                                     
-                                    # CORRECCIÓN: Se cambió a un color de texto oscuro para asegurar visibilidad en celdas blancas
                                     st.dataframe(
                                         df_top_table.style
                                         .format({col_metrica_name: "{:,.2f}"})
