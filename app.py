@@ -406,15 +406,24 @@ if btn_mapa_rapido:
                         df_agrupado = df_mapa_anio.groupby(group_cols)[metrica_activa].sum().reset_index()
                         df_agrupado = df_agrupado[~df_agrupado[columna_df].isin(["Nacional", "General"])]
                         
+                        # Crear diccionario para mapear CVE_ENT a Nombre del Estado
+                        mapa_estados = {}
+                        if nivel == "Municipal" and geo_estados_data:
+                            for f_est in geo_estados_data['features']:
+                                cve = f_est['properties'].get('CVE_ENT')
+                                nom = f_est['properties'].get('NOMGEO')
+                                if cve and nom:
+                                    mapa_estados[cve] = nom
+                                    
                         geo_records = []
                         for f in geojson_usar['features']:
                             record = {"id": f['id'], columna_df: f['properties'].get('NOMGEO', '')}
                             
-                            # Extraemos el estado para el nivel municipal
+                            # Extraemos el estado cruzando el CVE_ENT del municipio con el diccionario de estados
                             if nivel == "Municipal":
-                                estado_geo = f['properties'].get('NOM_ENT', f['properties'].get('ENTIDAD', f['properties'].get('ESTADO', '')))
-                                if estado_geo:
-                                    record['estado'] = estado_geo
+                                cve_ent = f['properties'].get('CVE_ENT')
+                                if cve_ent and cve_ent in mapa_estados:
+                                    record['estado'] = mapa_estados[cve_ent]
                                     
                             geo_records.append(record)
                             
