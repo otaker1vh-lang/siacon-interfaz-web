@@ -433,7 +433,7 @@ if btn_mapa_rapido:
                                                 
                                             if coords:
                                                 lons_p = [c[0] for c in coords]
-                                            lats_p = [c[1] for c in coords]
+                                                lats_p = [c[1] for c in coords]
                                                 lons.append(sum(lons_p)/len(lons_p))
                                                 lats.append(sum(lats_p)/len(lats_p))
                                                 texts.append(txt)
