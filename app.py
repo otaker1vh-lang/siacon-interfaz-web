@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
 import json
+import io
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN Y ESTILOS
@@ -73,9 +74,7 @@ lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalida
 def cargar_mapas_geojson():
     def procesar_geojson(geojson_data):
         for i, feature in enumerate(geojson_data.get('features', [])):
-            # 1. Asignar ID único sintético a cada polígono para evitar agujeros negros
             feature['id'] = str(i)
-            # 2. Corregir Winding Order
             geom = feature.get('geometry')
             if not geom: continue
             g_type = geom.get('type')
@@ -258,44 +257,47 @@ elif cultivo_input:
                 st.plotly_chart(fig_line, use_container_width=True)
                 
             with g_col2:
-                metrica_principal = cols_to_plot[0]
-                st.markdown(f"### 📊 Top {metrica_principal} ({ultimo_anio})")
-                df_last = df[df["anio"] == ultimo_anio]
-                agrupacion = "municipio" if estado_input != "Todos" else "estado"
-                
-                df_bar = (
-                    df_last.groupby(agrupacion, as_index=False)[metrica_principal]
-                    .sum()
-                    .sort_values(metrica_principal, ascending=False)
-                    .head(10)
-                    .sort_values(metrica_principal, ascending=True)
-                )
+                # CORRECCIÓN: Bucle para generar un gráfico por CADA métrica seleccionada y ordenar de mayor a menor
+                for metrica_activa in cols_to_plot:
+                    unidad = unidades_metricas.get(metrica_activa, "")
+                    st.markdown(f"### 📊 Top {metrica_activa} ({unidad}) - {ultimo_anio}")
+                    
+                    df_last = df[df["anio"] == ultimo_anio]
+                    agrupacion = "municipio" if estado_input != "Todos" else "estado"
+                    
+                    df_bar = (
+                        df_last.groupby(agrupacion, as_index=False)[metrica_activa]
+                        .sum()
+                        .sort_values(metrica_activa, ascending=False)
+                        .head(10)
+                    )
 
-                escala_top = [
-                    [0.00, "#86cfa5"],
-                    [0.50, "#269b63"],
-                    [1.00, "#f2c14e"],
-                ]
-                max_bar = float(df_bar[metrica_principal].max()) if not df_bar.empty else 0.0
-                fig_bar = px.bar(
-                    df_bar, x=metrica_principal, y=agrupacion, orientation="h",
-                    color=metrica_principal, color_continuous_scale=escala_top,
-                    range_color=(0, max_bar if max_bar > 0 else 1),
-                    text=metrica_principal
-                )
-                fig_bar.update_traces(
-                    texttemplate="%{text:,.2f}", textposition="outside",
-                    cliponaxis=False, marker_line_width=0,
-                    hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>"
-                )
-                fig_bar.update_layout(
-                    template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
-                    xaxis_title="", yaxis_title="", showlegend=False,
-                    coloraxis_showscale=False,
-                    margin=dict(l=10, r=65, t=15, b=20),
-                    yaxis=dict(autorange="reversed"),
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                    escala_top = [
+                        [0.00, "#86cfa5"],
+                        [0.50, "#269b63"],
+                        [1.00, "#f2c14e"],
+                    ]
+                    max_bar = float(df_bar[metrica_activa].max()) if not df_bar.empty else 0.0
+                    fig_bar = px.bar(
+                        df_bar, x=metrica_activa, y=agrupacion, orientation="h",
+                        color=metrica_activa, color_continuous_scale=escala_top,
+                        range_color=(0, max_bar if max_bar > 0 else 1),
+                        text=metrica_activa
+                    )
+                    fig_bar.update_traces(
+                        texttemplate="%{text:,.2f}", textposition="outside",
+                        cliponaxis=False, marker_line_width=0,
+                        hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>"
+                    )
+                    fig_bar.update_layout(
+                        template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
+                        xaxis_title="", yaxis_title="", showlegend=False,
+                        coloraxis_showscale=False,
+                        margin=dict(l=10, r=65, t=15, b=20),
+                        yaxis=dict(autorange="reversed"), # Coloca el #1 en la parte superior
+                        height=280 if len(cols_to_plot) > 1 else 450
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True)
                 
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
@@ -403,16 +405,14 @@ if btn_mapa_rapido:
                         df_agrupado = df_mapa_anio.groupby(columna_df)[metrica_activa].sum().reset_index()
                         df_agrupado = df_agrupado[~df_agrupado[columna_df].isin(["Nacional", "General"])]
                         
-                        # Crear Dataframe desde las geometrías para que no queden huecos
                         geo_records = []
                         for f in geojson_usar['features']:
                             geo_records.append({"id": f['id'], columna_df: f['properties'].get('NOMGEO', '')})
                         df_all = pd.DataFrame(geo_records)
                         
-                        # Merge por nombre y llenar vacíos con 0
                         df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
                         
-                        # Escala robusta: el percentil 98 reduce el efecto de valores extremos.
+                        # Escala robusta para colores
                         valores_positivos = pd.to_numeric(
                             df_plot_map[metrica_activa], errors="coerce"
                         ).fillna(0)
@@ -424,7 +424,6 @@ if btn_mapa_rapido:
                         limite_color = max(limite_color, 1e-9)
 
                         try:
-                            # Trazamos usando el ID único para asegurar que el 100% de polígonos se pinten
                             fig_mapa = px.choropleth(
                                 df_plot_map,
                                 geojson=geojson_usar,
@@ -446,7 +445,8 @@ if btn_mapa_rapido:
                             
                             df_top = pd.DataFrame()
                             if tipo_etiqueta != "Ocultar":
-                                df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).head(10)
+                                # CORRECCIÓN: Evitar municipios duplicados en la tabla por coincidencia de nombre (ej. Cuauhtémoc)
+                                df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).drop_duplicates(subset=[columna_df]).head(10)
                                 lats, lons, texts = [], [], []
                                 
                                 for _, row in df_top.iterrows():
@@ -494,22 +494,34 @@ if btn_mapa_rapido:
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            # Expandimos el ancho del mapa a proporción 4.5 a 1.5
                             map_col, table_col = st.columns([4.5, 1.5])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
                                 
+                                buffer = io.StringIO()
+                                fig_mapa.write_html(buffer, include_plotlyjs='cdn')
+                                html_bytes = buffer.getvalue().encode('utf-8')
+                                
+                                st.download_button(
+                                    label=f"⬇️ Descargar Mapa de {metrica_activa} ({anio_mapa})",
+                                    data=html_bytes,
+                                    file_name=f"mapa_{metrica_activa.lower().replace(' ', '_')}_{anio_mapa}.html",
+                                    mime="text/html",
+                                    key=f"descarga_mapa_{metrica_activa}_{anio_mapa}",
+                                    use_container_width=True
+                                )
+                                
                             with table_col:
                                 if tipo_etiqueta != "Ocultar" and not df_top.empty:
                                     st.markdown(f"#### 🏆 Top 10 {columna_df.capitalize()}")
                                     
-                                    # Tabla Top 10 con ranking y barras proporcionales.
                                     df_top_table = df_top[[columna_df, metrica_activa]].copy()
                                     df_top_table = df_top_table.sort_values(
                                         metrica_activa, ascending=False
                                     ).reset_index(drop=True)
                                     df_top_table.insert(0, "Lugar", [f"#{i}" for i in range(1, len(df_top_table) + 1)])
+                                    
                                     col_metrica_name = f"{metrica_activa} ({unidad})"
                                     df_top_table.rename(
                                         columns={
@@ -517,8 +529,11 @@ if btn_mapa_rapido:
                                             metrica_activa: col_metrica_name
                                         }, inplace=True
                                     )
+                                    
                                     max_top = float(df_top_table[col_metrica_name].max()) if not df_top_table.empty else 0.0
                                     max_top = max(max_top, 1e-9)
+                                    
+                                    # CORRECCIÓN: Se cambió a un color de texto oscuro para asegurar visibilidad en celdas blancas
                                     st.dataframe(
                                         df_top_table.style
                                         .format({col_metrica_name: "{:,.2f}"})
@@ -529,7 +544,7 @@ if btn_mapa_rapido:
                                         )
                                         .set_properties(
                                             subset=[col_metrica_name],
-                                            **{"color": "#ffffff", "font-weight": "bold"}
+                                            **{"color": "#0b1325", "font-weight": "bold"}
                                         ),
                                         hide_index=True,
                                         use_container_width=True,
