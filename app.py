@@ -60,11 +60,28 @@ lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalida
 
 @st.cache_data(show_spinner=False)
 def cargar_mapas_geojson():
+    # -------------------------------------------------------------------------
+    # CORRECCIÓN 1: Función para invertir el Winding Order y arreglar el fallo
+    # de renderizado (el rectángulo morado) de D3.js en mapas de Plotly nativo.
+    # -------------------------------------------------------------------------
+    def corregir_winding_order(geojson_data):
+        for feature in geojson_data.get('features', []):
+            geom = feature.get('geometry')
+            if not geom: continue
+            g_type = geom.get('type')
+            coords = geom.get('coordinates', [])
+            
+            if g_type == 'Polygon':
+                geom['coordinates'] = [anillo[::-1] for anillo in coords]
+            elif g_type == 'MultiPolygon':
+                geom['coordinates'] = [[anillo[::-1] for anillo in poli] for poli in coords]
+        return geojson_data
+
     try:
         with open("geo_estados.json", "r", encoding="utf-8") as f:
-            geo_estados = json.load(f)
+            geo_estados = corregir_winding_order(json.load(f))
         with open("geo_municipios.json", "r", encoding="utf-8") as f:
-            geo_municipios = json.load(f)
+            geo_municipios = corregir_winding_order(json.load(f))
         return geo_estados, geo_municipios
     except Exception as e:
         st.error(f"Error técnico detallado: {e}")
@@ -331,17 +348,25 @@ if btn_mapa_rapido:
             else:
                 if nivel == "Estatal":
                     df_plot_map = df_mapa.groupby("estado")[metrica_activa].sum().reset_index()
+                    # ---------------------------------------------------------
+                    # CORRECCIÓN 2: Filtrar filas de agregación nacional para 
+                    # evitar errores de fitbounds en geometrías inexistentes.
+                    # ---------------------------------------------------------
+                    df_plot_map = df_plot_map[~df_plot_map["estado"].isin(["Nacional", "General"])]
+                    
                     geojson_usar = geo_estados_data
                     llave_geojson = "properties.NOMGEO"
                     columna_df = "estado"
                 else:
                     df_plot_map = df_mapa.groupby("municipio")[metrica_activa].sum().reset_index()
+                    df_plot_map = df_plot_map[~df_plot_map["municipio"].isin(["Nacional", "General"])]
+                    
                     geojson_usar = geo_municipios_data
                     llave_geojson = "properties.NOMGEO" 
                     columna_df = "municipio"
 
                 try:
-                    # Renderizado nativo vectorial (más rápido y sin dependencias externas)
+                    # Renderizado nativo vectorial
                     fig_mapa = px.choropleth(
                         df_plot_map,
                         geojson=geojson_usar,
@@ -352,8 +377,15 @@ if btn_mapa_rapido:
                         hover_name=columna_df
                     )
                     
-                    # Ajuste automático del zoom sobre las geometrías de México
-                    fig_mapa.update_geos(fitbounds="locations", visible=False)
+                    # ---------------------------------------------------------
+                    # CORRECCIÓN 3: Agregar la proyección "mercator" asegura 
+                    # que se renderice plano y evita artefactos esféricos extraños.
+                    # ---------------------------------------------------------
+                    fig_mapa.update_geos(
+                        fitbounds="locations", 
+                        visible=False,
+                        projection_type="mercator"
+                    )
                     
                     fig_mapa.update_layout(
                         margin={"r":0, "t":0, "l":0, "b":0},
