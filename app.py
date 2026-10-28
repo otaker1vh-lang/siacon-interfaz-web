@@ -401,7 +401,6 @@ if btn_mapa_rapido:
                         geojson_usar = geo_estados_data if nivel == "Estatal" else geo_municipios_data
                         columna_df = "estado" if nivel == "Estatal" else "municipio"
                         
-                        # Retenemos el nombre del estado en la agrupación a nivel municipal para poder mostrarlo
                         group_cols = [columna_df, "estado"] if nivel == "Municipal" else [columna_df]
                         
                         df_agrupado = df_mapa_anio.groupby(group_cols)[metrica_activa].sum().reset_index()
@@ -438,6 +437,29 @@ if btn_mapa_rapido:
                                 hover_name=columna_df,
                                 hover_data={metrica_activa: ':,.2f', 'id': False, 'estado': False}
                             )
+
+                            # -------------------------------------------------------------
+                            # CORRECCIÓN: Bordes personalizados (Suaves Mun / Fuertes Est)
+                            # -------------------------------------------------------------
+                            if nivel == "Municipal":
+                                fig_mapa.update_traces(marker_line_width=0.1, marker_line_color='rgba(255, 255, 255, 0.2)')
+                                
+                                estados_nombres = [f['properties'].get('NOMGEO', '') for f in geo_estados_data['features']]
+                                fig_mapa.add_trace(
+                                    go.Choropleth(
+                                        geojson=geo_estados_data,
+                                        locations=estados_nombres,
+                                        featureidkey="properties.NOMGEO",
+                                        z=[0] * len(estados_nombres),
+                                        colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
+                                        marker_line_width=1.2,
+                                        marker_line_color='#cbd5e1',
+                                        showscale=False,
+                                        hoverinfo='skip'
+                                    )
+                                )
+                            else:
+                                fig_mapa.update_traces(marker_line_width=0.8, marker_line_color='rgba(255, 255, 255, 0.5)')
                             
                             df_top = pd.DataFrame()
                             if tipo_etiqueta != "Ocultar":
@@ -495,7 +517,8 @@ if btn_mapa_rapido:
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            map_col, table_col = st.columns([4.5, 1.5])
+                            # CORRECCIÓN: Ajuste de layout de tabla [3.2, 1.8] para evitar scroll horizontal
+                            map_col, table_col = st.columns([3.2, 1.8])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
@@ -555,7 +578,7 @@ if btn_mapa_rapido:
                                         ),
                                         hide_index=True,
                                         use_container_width=True,
-                                        height=min(440, 38 * (len(df_top_table) + 1))
+                                        height=min(500, 42 * (len(df_top_table) + 1)) # CORRECCIÓN: Mayor altura para no generar scroll vertical
                                     )
                                 else:
                                     st.write("")
