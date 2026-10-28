@@ -341,9 +341,9 @@ st.write("")
 
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
-    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa Interactivo (Rápido)", type="secondary", use_container_width=True)
+    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa (Rápido)", type="secondary", use_container_width=True)
 with col_btn2:
-    btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
+    btn_ia_completo = st.button("🚀 Análisis (Excel)", type="primary", use_container_width=True)
 
 # ----------------- MAPA INTERACTIVO (MOTOR NATIVO SIN MAPBOX) -----------------
 if btn_mapa_rapido:
