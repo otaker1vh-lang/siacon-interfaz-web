@@ -263,12 +263,37 @@ elif cultivo_input:
                 df_last = df[df["anio"] == ultimo_anio]
                 agrupacion = "municipio" if estado_input != "Todos" else "estado"
                 
-                df_bar = df_last.groupby(agrupacion)[metrica_principal].sum().reset_index().sort_values(metrica_principal, ascending=True).tail(10)
-                
-                fig_bar = px.bar(df_bar, x=metrica_principal, y=agrupacion, orientation='h', color_discrete_sequence=["#2E7D32"])
+                df_bar = (
+                    df_last.groupby(agrupacion, as_index=False)[metrica_principal]
+                    .sum()
+                    .sort_values(metrica_principal, ascending=False)
+                    .head(10)
+                    .sort_values(metrica_principal, ascending=True)
+                )
+
+                escala_top = [
+                    [0.00, "#86cfa5"],
+                    [0.50, "#269b63"],
+                    [1.00, "#f2c14e"],
+                ]
+                max_bar = float(df_bar[metrica_principal].max()) if not df_bar.empty else 0.0
+                fig_bar = px.bar(
+                    df_bar, x=metrica_principal, y=agrupacion, orientation="h",
+                    color=metrica_principal, color_continuous_scale=escala_top,
+                    range_color=(0, max_bar if max_bar > 0 else 1),
+                    text=metrica_principal
+                )
+                fig_bar.update_traces(
+                    texttemplate="%{text:,.2f}", textposition="outside",
+                    cliponaxis=False, marker_line_width=0,
+                    hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>"
+                )
                 fig_bar.update_layout(
                     template="plotly_dark", plot_bgcolor="#0b1325", paper_bgcolor="#0b1325",
-                    xaxis_title="", yaxis_title="", margin=dict(l=10, r=20, t=20, b=20)
+                    xaxis_title="", yaxis_title="", showlegend=False,
+                    coloraxis_showscale=False,
+                    margin=dict(l=10, r=65, t=15, b=20),
+                    yaxis=dict(autorange="reversed"),
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
@@ -387,6 +412,17 @@ if btn_mapa_rapido:
                         # Merge por nombre y llenar vacíos con 0
                         df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
                         
+                        # Escala robusta: el percentil 98 reduce el efecto de valores extremos.
+                        valores_positivos = pd.to_numeric(
+                            df_plot_map[metrica_activa], errors="coerce"
+                        ).fillna(0)
+                        valores_positivos = valores_positivos[valores_positivos > 0]
+                        limite_color = (
+                            float(valores_positivos.quantile(0.98))
+                            if not valores_positivos.empty else 1.0
+                        )
+                        limite_color = max(limite_color, 1e-9)
+
                         try:
                             # Trazamos usando el ID único para asegurar que el 100% de polígonos se pinten
                             fig_mapa = px.choropleth(
@@ -394,7 +430,16 @@ if btn_mapa_rapido:
                                 geojson=geojson_usar,
                                 locations='id', 
                                 color=metrica_activa,
-                                color_continuous_scale="YlGn",
+                                color_continuous_scale=[
+                                    [0.00, "#f1f5f9"],
+                                    [0.10, "#d9f0a3"],
+                                    [0.25, "#addd8e"],
+                                    [0.45, "#78c679"],
+                                    [0.65, "#41ab5d"],
+                                    [0.82, "#238443"],
+                                    [1.00, "#005a32"],
+                                ],
+                                range_color=(0, limite_color),
                                 hover_name=columna_df,
                                 hover_data={metrica_activa: ':,.2f', 'id': False}
                             )
@@ -459,15 +504,36 @@ if btn_mapa_rapido:
                                 if tipo_etiqueta != "Ocultar" and not df_top.empty:
                                     st.markdown(f"#### 🏆 Top 10 {columna_df.capitalize()}")
                                     
-                                    # Preparar tabla limpia y formateada
+                                    # Tabla Top 10 con ranking y barras proporcionales.
                                     df_top_table = df_top[[columna_df, metrica_activa]].copy()
+                                    df_top_table = df_top_table.sort_values(
+                                        metrica_activa, ascending=False
+                                    ).reset_index(drop=True)
+                                    df_top_table.insert(0, "Lugar", [f"#{i}" for i in range(1, len(df_top_table) + 1)])
                                     col_metrica_name = f"{metrica_activa} ({unidad})"
-                                    df_top_table.rename(columns={columna_df: columna_df.capitalize(), metrica_activa: col_metrica_name}, inplace=True)
-                                    
+                                    df_top_table.rename(
+                                        columns={
+                                            columna_df: columna_df.capitalize(),
+                                            metrica_activa: col_metrica_name
+                                        }, inplace=True
+                                    )
+                                    max_top = float(df_top_table[col_metrica_name].max()) if not df_top_table.empty else 0.0
+                                    max_top = max(max_top, 1e-9)
                                     st.dataframe(
-                                        df_top_table.style.format({col_metrica_name: "{:,.2f}"}), 
-                                        hide_index=True, 
-                                        use_container_width=True
+                                        df_top_table.style
+                                        .format({col_metrica_name: "{:,.2f}"})
+                                        .bar(subset=[col_metrica_name], color="#238443", vmin=0, vmax=max_top)
+                                        .set_properties(
+                                            subset=["Lugar"],
+                                            **{"color": "#f2c14e", "font-weight": "bold", "text-align": "center"}
+                                        )
+                                        .set_properties(
+                                            subset=[col_metrica_name],
+                                            **{"color": "#ffffff", "font-weight": "bold"}
+                                        ),
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        height=min(440, 38 * (len(df_top_table) + 1))
                                     )
                                 else:
                                     st.write("")
