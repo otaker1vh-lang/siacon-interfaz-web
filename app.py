@@ -449,8 +449,8 @@ if btn_mapa_rapido:
                                         featureidkey="properties.NOMGEO",
                                         z=[0] * len(estados_nombres),
                                         colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
-                                        marker_line_width=2.5,
-                                        marker_line_color='#ffffff',
+                                        marker_line_width=1.0,      # Contorno de estado ajustado a grosor menor
+                                        marker_line_color='#1e293b', # Color oscuro
                                         showscale=False,
                                         hoverinfo='skip'
                                     )
@@ -507,14 +507,15 @@ if btn_mapa_rapido:
                             )
                             
                             fig_mapa.update_layout(
-                                height=550,
+                                height=500, # Menor altura = formato panorámico/rectangular
                                 margin={"r":0, "t":0, "l":0, "b":0},
                                 paper_bgcolor="#0b1325",
                                 plot_bgcolor="#0b1325",
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            map_col, table_col = st.columns([4.0, 1.2])
+                            # Expandimos ancho del mapa [4.2] y reducimos tabla [1.0]
+                            map_col, table_col = st.columns([4.2, 1.0])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
@@ -549,6 +550,7 @@ if btn_mapa_rapido:
                                     ).reset_index(drop=True)
                                     df_top_table.insert(0, "Lugar", [f"#{i}" for i in range(1, len(df_top_table) + 1)])
                                     
+                                    # Salto de línea dinámico para el encabezado
                                     col_metrica_name = f"{metrica_activa}\n({unidad})"
                                     df_top_table.rename(
                                         columns={
@@ -560,29 +562,30 @@ if btn_mapa_rapido:
                                     max_top = float(df_top_table[col_metrica_name].max()) if not df_top_table.empty else 0.0
                                     max_top = max(max_top, 1e-9)
                                     
+                                    # Ajuste estricto de fuente (10px) y white-space
                                     st.dataframe(
                                         df_top_table.style
                                         .format({col_metrica_name: "{:,.2f}"})
                                         .bar(subset=[col_metrica_name], color="#238443", vmin=0, vmax=max_top)
                                         .set_properties(
                                             subset=["Lugar"],
-                                            **{"color": "#f2c14e", "font-weight": "bold", "text-align": "center", "font-size": "12px", "padding": "2px"}
+                                            **{"color": "#f2c14e", "font-weight": "bold", "text-align": "center", "font-size": "10px", "padding": "4px"}
                                         )
                                         .set_properties(
                                             subset=[col_metrica_name],
-                                            **{"color": "#0b1325", "font-weight": "bold", "font-size": "12px", "padding": "2px"}
+                                            **{"color": "#0b1325", "font-weight": "bold", "font-size": "10px", "padding": "4px"}
                                         )
                                         .set_properties(
                                             subset=[columna_df.capitalize()],
-                                            **{"font-size": "12px", "padding": "2px"}
+                                            **{"font-size": "10px", "padding": "4px"}
                                         )
-                                        .set_table_styles([{
-                                            'selector': 'th',
-                                            'props': [('font-size', '12px'), ('text-align', 'center'), ('white-space', 'pre-wrap')]
-                                        }]),
+                                        .set_table_styles([
+                                            {'selector': 'th', 'props': [('font-size', '10px'), ('white-space', 'pre-wrap'), ('text-align', 'center')]},
+                                            {'selector': 'td', 'props': [('font-size', '10px')]}
+                                        ]),
                                         hide_index=True,
                                         use_container_width=True,
-                                        height=min(350, 32 * (len(df_top_table) + 1))
+                                        height=min(400, 35 * (len(df_top_table) + 1))
                                     )
                                 else:
                                     st.write("")
