@@ -341,21 +341,18 @@ if btn_mapa_rapido:
                     columna_df = "municipio"
 
                 try:
-                    fig_mapa = px.choropleth(
+                    fig_mapa = px.choropleth_mapbox(
                         df_plot_map,
                         geojson=geojson_usar,
                         locations=columna_df,
                         featureidkey=llave_geojson,
                         color=metrica_activa,
                         color_continuous_scale="Viridis",
-                        hover_name=columna_df
-                    )
-                    
-                    # Motor nativo auto-ajustable (elimina dependencia y errores de Mapbox)
-                    fig_mapa.update_geos(
-                        fitbounds="locations", 
-                        visible=False,
-                        bgcolor="#0b1325"
+                        mapbox_style="carto-positron", # Mapa base libre (no requiere API)
+                        zoom=4,                        # Nivel de zoom inicial para México
+                        center={"lat": 23.6345, "lon": -102.5528}, # Coordenadas centrales de México
+                        hover_name=columna_df,
+                        opacity=0.7
                     )
                     
                     fig_mapa.update_layout(
@@ -366,7 +363,7 @@ if btn_mapa_rapido:
                     
                     st.plotly_chart(fig_mapa, use_container_width=True)
                 except Exception as e:
-                     st.error(f"Error renderizando el mapa nativo: {e}")
+                    st.error(f"Error renderizando el mapa con Mapbox: {e}")
 
 # ----------------- ANÁLISIS PROFUNDO (CLOUD RUN) -----------------
 if btn_ia_completo:
