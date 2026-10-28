@@ -58,7 +58,6 @@ def cargar_catalogos():
 
 lista_estados, lista_cultivos, lista_variedades, lista_ciclos_db, lista_modalidades_db = cargar_catalogos()
 
-# Carga de Mapas GeoJSON en Memoria
 @st.cache_data(show_spinner=False)
 def cargar_mapas_geojson():
     try:
@@ -235,7 +234,6 @@ elif cultivo_input:
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            # --- Resumen Compacto con HTML y CSS Nativo ---
             st.markdown("### 📋 Resumen Detallado por Variable y Variación Anual")
             df_resumen = df.groupby("anio")[cols_to_plot].sum().reset_index().sort_values("anio")
             
@@ -309,7 +307,7 @@ with col_btn1:
 with col_btn2:
     btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
 
-# ----------------- MAPA INTERACTIVO (CORREGIDO A GRAPH_OBJECTS) -----------------
+# ----------------- MAPA INTERACTIVO (MOTOR NATIVO SIN MAPBOX) -----------------
 if btn_mapa_rapido:
     if not generar_mapa or not anios_mapa:
         st.error("⚠️ Activa 'Generar Mapa' y selecciona al menos un año.")
@@ -321,7 +319,7 @@ if btn_mapa_rapido:
         metrica_activa = metricas_seleccionadas[0]
         anio_mapa = int(anios_mapa[-1])
         
-        with st.spinner("🗺️ Renderizando mapa interactivo en tiempo real..."):
+        with st.spinner("🗺️ Renderizando mapa geoespacial nativo..."):
             st.markdown("---")
             st.markdown(f"<h3 style='text-align: center;'>🗺️ Distribución de {metrica_activa} ({anio_mapa})</h3>", unsafe_allow_html=True)
             
@@ -335,34 +333,31 @@ if btn_mapa_rapido:
                     geojson_usar = geo_estados_data
                     llave_geojson = "properties.NOMGEO"
                     columna_df = "estado"
-                    zoom_lvl = 4
                 else:
                     df_plot_map = df_mapa.groupby("municipio")[metrica_activa].sum().reset_index()
                     geojson_usar = geo_municipios_data
                     llave_geojson = "properties.NOMGEO" 
                     columna_df = "municipio"
-                    zoom_lvl = 6 if estado_input != "Todos" else 4
 
                 try:
-                    # Implementación directa usando plotly.graph_objects (go) para evitar errores de plotly.express
-                    fig_mapa = go.Figure(go.Choroplethmapbox(
+                    fig_mapa = px.choropleth(
+                        df_plot_map,
                         geojson=geojson_usar,
-                        locations=df_plot_map[columna_df],
-                        z=df_plot_map[metrica_activa],
+                        locations=columna_df,
                         featureidkey=llave_geojson,
-                        colorscale="Viridis",
-                        marker_opacity=0.7,
-                        marker_line_width=0.5,
-                        text=df_plot_map[columna_df],
-                        hovertemplate="<b>%{text}</b><br>" + metrica_activa + ": %{z:,.2f}<extra></extra>"
-                    ))
+                        color=metrica_activa,
+                        color_continuous_scale="Viridis",
+                        hover_name=columna_df
+                    )
+                    
+                    # Motor nativo auto-ajustable (elimina dependencia y errores de Mapbox)
+                    fig_mapa.update_geos(
+                        fitbounds="locations", 
+                        visible=False,
+                        bgcolor="#0b1325"
+                    )
                     
                     fig_mapa.update_layout(
-                        mapbox=dict(
-                            style="carto-darkmatter",
-                            zoom=zoom_lvl,
-                            center=dict(lat=23.6345, lon=-102.5528)
-                        ),
                         margin={"r":0, "t":0, "l":0, "b":0},
                         paper_bgcolor="#0b1325",
                         plot_bgcolor="#0b1325"
@@ -370,7 +365,7 @@ if btn_mapa_rapido:
                     
                     st.plotly_chart(fig_mapa, use_container_width=True)
                 except Exception as e:
-                     st.error(f"Error renderizando el mapa con Plotly Graph Objects: {e}")
+                     st.error(f"Error renderizando el mapa nativo: {e}")
 
 # ----------------- ANÁLISIS PROFUNDO (CLOUD RUN) -----------------
 if btn_ia_completo:
