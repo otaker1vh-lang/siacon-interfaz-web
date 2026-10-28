@@ -67,6 +67,7 @@ def cargar_mapas_geojson():
             geo_municipios = json.load(f)
         return geo_estados, geo_municipios
     except Exception as e:
+        st.error(f"Error técnico detallado: {e}")
         return None, None
 
 geo_estados_data, geo_municipios_data = cargar_mapas_geojson()
