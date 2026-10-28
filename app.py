@@ -269,7 +269,6 @@ elif cultivo_input:
                         .sum()
                         .sort_values(metrica_activa, ascending=False)
                         .head(10)
-                        .sort_values(metrica_activa, ascending=True)
                     )
 
                     escala_top = [
