@@ -408,10 +408,23 @@ if btn_mapa_rapido:
                         
                         geo_records = []
                         for f in geojson_usar['features']:
-                            geo_records.append({"id": f['id'], columna_df: f['properties'].get('NOMGEO', '')})
+                            record = {"id": f['id'], columna_df: f['properties'].get('NOMGEO', '')}
+                            
+                            # Extraemos el estado para el nivel municipal
+                            if nivel == "Municipal":
+                                estado_geo = f['properties'].get('NOM_ENT', f['properties'].get('ENTIDAD', f['properties'].get('ESTADO', '')))
+                                if estado_geo:
+                                    record['estado'] = estado_geo
+                                    
+                            geo_records.append(record)
+                            
                         df_all = pd.DataFrame(geo_records)
                         
-                        df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
+                        # Realizamos el merge usando Municipio Y Estado para evitar duplicidad de homónimos
+                        if nivel == "Municipal" and "estado" in df_all.columns:
+                            df_plot_map = pd.merge(df_all, df_agrupado, on=[columna_df, "estado"], how='left').fillna({metrica_activa: 0})
+                        else:
+                            df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
                         
                         valores_positivos = pd.to_numeric(df_plot_map[metrica_activa], errors="coerce").fillna(0)
                         valores_positivos = valores_positivos[valores_positivos > 0]
@@ -507,7 +520,7 @@ if btn_mapa_rapido:
                             )
                             
                             fig_mapa.update_layout(
-                                height=550, # CAMBIO 2: Reducción de altura a 380px para forzar el marco rectangular
+                                height=380, # CAMBIO 2: Reducción de altura a 380px para forzar el marco rectangular
                                 margin={"r":0, "t":0, "l":0, "b":0},
                                 paper_bgcolor="#0b1325",
                                 plot_bgcolor="#0b1325",
