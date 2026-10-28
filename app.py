@@ -9,7 +9,7 @@ import json
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN Y ESTILOS
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Inteligencia Geoespacial SIACON", page_icon="🌱", layout="wide")
+st.set_page_config(page_title="Dashboard SIACON", page_icon="🌱", layout="wide")
 
 st.markdown("""
 <style>
@@ -30,8 +30,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🌱 Inteligencia Geoespacial SIACON</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Dashboard Dinámico y Generador de Reportes Agroclimáticos.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌱 Dashboard SIACON</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Generador de Reportes.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 2. CONEXIÓN Y CARGA DE CATÁLOGOS DESDE SUPABASE
@@ -86,7 +86,7 @@ columnas_metricas = {
 # -----------------------------------------------------------------------------
 # 3. SECCIÓN 1: FILTROS E INTERFAZ
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>1. Definición del Objetivo</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='color: #d4af37 !important;'>1. Parámetros</h4>", unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -283,8 +283,8 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 # 5. SECCIÓN 2: MAPAS Y GENERACIÓN DE INTELIGENCIA
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='color: #d4af37 !important;'>2. Parámetros de Cartografía y Reporte de Inteligencia</h4>", unsafe_allow_html=True)
-st.caption("Genera mapas interactivos inmediatos o solicita el análisis profundo con el Agente SIACON en Cloud Run.")
+st.markdown("<h4 style='color: #d4af37 !important;'>2. Mapa y Reporte</h4>", unsafe_allow_html=True)
+st.caption("Genera mapas y análisis.")
 
 c9, c10, c11, c12 = st.columns(4)
 with c9:
@@ -341,19 +341,19 @@ if btn_mapa_rapido:
                     columna_df = "municipio"
 
                 try:
-                    fig_mapa = px.choropleth_mapbox(
+                    # Renderizado nativo vectorial (más rápido y sin dependencias externas)
+                    fig_mapa = px.choropleth(
                         df_plot_map,
                         geojson=geojson_usar,
                         locations=columna_df,
                         featureidkey=llave_geojson,
                         color=metrica_activa,
                         color_continuous_scale="Viridis",
-                        mapbox_style="carto-positron", # Mapa base libre (no requiere API)
-                        zoom=4,                        # Nivel de zoom inicial para México
-                        center={"lat": 23.6345, "lon": -102.5528}, # Coordenadas centrales de México
-                        hover_name=columna_df,
-                        opacity=0.7
+                        hover_name=columna_df
                     )
+                    
+                    # Ajuste automático del zoom sobre las geometrías de México
+                    fig_mapa.update_geos(fitbounds="locations", visible=False)
                     
                     fig_mapa.update_layout(
                         margin={"r":0, "t":0, "l":0, "b":0},
@@ -363,7 +363,7 @@ if btn_mapa_rapido:
                     
                     st.plotly_chart(fig_mapa, use_container_width=True)
                 except Exception as e:
-                    st.error(f"Error renderizando el mapa con Mapbox: {e}")
+                    st.error(f"Error renderizando el mapa geoespacial: {e}")
 
 # ----------------- ANÁLISIS PROFUNDO (CLOUD RUN) -----------------
 if btn_ia_completo:
