@@ -449,8 +449,8 @@ if btn_mapa_rapido:
                                         featureidkey="properties.NOMGEO",
                                         z=[0] * len(estados_nombres),
                                         colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
-                                        marker_line_width=1.0,      # Contorno de estado ajustado a grosor menor
-                                        marker_line_color='#1e293b', # Color oscuro
+                                        marker_line_width=0.6,
+                                        marker_line_color='#64748b',
                                         showscale=False,
                                         hoverinfo='skip'
                                     )
@@ -499,6 +499,19 @@ if btn_mapa_rapido:
                                         name="Top 10"
                                     )
                             
+                            # Mover la barra de colores abajo para dar más espacio horizontal al mapa
+                            fig_mapa.update_layout(
+                                coloraxis_colorbar=dict(
+                                    title="",
+                                    orientation="h",
+                                    y=-0.1,
+                                    x=0.5,
+                                    xanchor="center",
+                                    thickness=12,
+                                    len=0.7
+                                )
+                            )
+
                             fig_mapa.update_geos(
                                 fitbounds="locations", 
                                 visible=False, 
@@ -507,15 +520,14 @@ if btn_mapa_rapido:
                             )
                             
                             fig_mapa.update_layout(
-                                height=500, # Menor altura = formato panorámico/rectangular
+                                height=480,
                                 margin={"r":0, "t":0, "l":0, "b":0},
                                 paper_bgcolor="#0b1325",
                                 plot_bgcolor="#0b1325",
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            # Expandimos ancho del mapa [4.2] y reducimos tabla [1.0]
-                            map_col, table_col = st.columns([4.2, 1.0])
+                            map_col, table_col = st.columns([3.8, 1.2])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
@@ -548,45 +560,63 @@ if btn_mapa_rapido:
                                     df_top_table = df_top_table.sort_values(
                                         metrica_activa, ascending=False
                                     ).reset_index(drop=True)
-                                    df_top_table.insert(0, "Lugar", [f"#{i}" for i in range(1, len(df_top_table) + 1)])
                                     
-                                    # Salto de línea dinámico para el encabezado
-                                    col_metrica_name = f"{metrica_activa}\n({unidad})"
-                                    df_top_table.rename(
-                                        columns={
-                                            columna_df: columna_df.capitalize(),
-                                            metrica_activa: col_metrica_name
-                                        }, inplace=True
-                                    )
+                                    # Construcción de tabla HTML manual para garantizar sin barras de scroll y texto pequeño
+                                    html_table = f"""
+                                    <style>
+                                        .custom-table {{
+                                            width: 100%;
+                                            font-size: 11px;
+                                            color: #e2e8f0;
+                                            border-collapse: collapse;
+                                            font-family: sans-serif;
+                                        }}
+                                        .custom-table th {{
+                                            background-color: #1e293b;
+                                            padding: 6px 4px;
+                                            text-align: center;
+                                            border-bottom: 1px solid #334155;
+                                            font-weight: 600;
+                                        }}
+                                        .custom-table td {{
+                                            padding: 6px 4px;
+                                            border-bottom: 1px solid #1e293b;
+                                            text-align: left;
+                                        }}
+                                        .custom-table td.val-col {{
+                                            text-align: right;
+                                            font-weight: bold;
+                                        }}
+                                        .custom-table .lugar {{
+                                            color: #f2c14e;
+                                            font-weight: bold;
+                                            text-align: center;
+                                        }}
+                                    </style>
+                                    <table class="custom-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Lugar</th>
+                                                <th>{columna_df.capitalize()}</th>
+                                                <th>{metrica_activa}<br>({unidad})</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                    """
                                     
-                                    max_top = float(df_top_table[col_metrica_name].max()) if not df_top_table.empty else 0.0
-                                    max_top = max(max_top, 1e-9)
+                                    for i, row in df_top_table.iterrows():
+                                        val_fmt = f"{row[metrica_activa]:,.2f}"
+                                        html_table += f"""
+                                            <tr>
+                                                <td class="lugar">#{i+1}</td>
+                                                <td>{row[columna_df]}</td>
+                                                <td class="val-col">{val_fmt}</td>
+                                            </tr>
+                                        """
                                     
-                                    # Ajuste estricto de fuente (10px) y white-space
-                                    st.dataframe(
-                                        df_top_table.style
-                                        .format({col_metrica_name: "{:,.2f}"})
-                                        .bar(subset=[col_metrica_name], color="#238443", vmin=0, vmax=max_top)
-                                        .set_properties(
-                                            subset=["Lugar"],
-                                            **{"color": "#f2c14e", "font-weight": "bold", "text-align": "center", "font-size": "10px", "padding": "4px"}
-                                        )
-                                        .set_properties(
-                                            subset=[col_metrica_name],
-                                            **{"color": "#0b1325", "font-weight": "bold", "font-size": "10px", "padding": "4px"}
-                                        )
-                                        .set_properties(
-                                            subset=[columna_df.capitalize()],
-                                            **{"font-size": "10px", "padding": "4px"}
-                                        )
-                                        .set_table_styles([
-                                            {'selector': 'th', 'props': [('font-size', '10px'), ('white-space', 'pre-wrap'), ('text-align', 'center')]},
-                                            {'selector': 'td', 'props': [('font-size', '10px')]}
-                                        ]),
-                                        hide_index=True,
-                                        use_container_width=True,
-                                        height=min(400, 35 * (len(df_top_table) + 1))
-                                    )
+                                    html_table += "</tbody></table>"
+                                    st.markdown(html_table, unsafe_allow_html=True)
+
                                 else:
                                     st.write("")
                                     
