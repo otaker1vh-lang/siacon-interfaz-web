@@ -26,6 +26,17 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
+    /* CORRECCIÓN: Estilo específico para cambiar el color del botón del mapa */
+    button[kind="secondary"] {
+        background-color: #0284c7 !important;
+        color: white !important;
+        border: 1px solid #0369a1 !important;
+    }
+    button[kind="secondary"]:hover {
+        background-color: #0369a1 !important;
+        border: 1px solid #0c4a6e !important;
+    }
+    
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
 </style>
 """, unsafe_allow_html=True)
@@ -308,7 +319,8 @@ with c10:
 with c11:
     anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024"], disabled=not generar_mapa)
 with c12:
-    tipo_etiqueta = st.selectbox("🏷️ ETIQUETAS", ["Ambos (Número y Nombre)", "Solo Nombre", "Solo Número", "Ninguno"], disabled=not generar_mapa)
+    # Ajustamos las opciones al nuevo diseño limpio (Marcador + Tabla)
+    tipo_etiqueta = st.selectbox("🏷️ TOP 10 DESTACADOS", ["Mostrar Puntos y Tabla", "Ocultar"], disabled=not generar_mapa)
 
 API_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/consulta"
 BASE_FILE_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/archivos/"
@@ -317,7 +329,7 @@ st.write("")
 
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
-    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa Interactivo (Rápido)", use_container_width=True)
+    btn_mapa_rapido = st.button("🗺️ Generar Solo Mapa Interactivo (Rápido)", type="secondary", use_container_width=True)
 with col_btn2:
     btn_ia_completo = st.button("🚀 Análisis Profundo (IA, Sequía y Excel)", type="primary", use_container_width=True)
 
@@ -328,129 +340,147 @@ if btn_mapa_rapido:
     elif not datos_disponibles:
         st.error("⚠️ No hay datos disponibles para dibujar el mapa. Verifica tus filtros en la Sección 1.")
     elif geo_estados_data is None or geo_municipios_data is None:
-        st.error("⚠️ No se encontraron los archivos 'geo_estados.json' o 'geo_municipios.json' en el repositorio.")
+        st.error("⚠️ No se encontraron los archivos GeoJSON en el repositorio.")
     else:
         with st.spinner("🗺️ Renderizando mapas..."):
             st.markdown("---")
             
-            # CORRECCIÓN 2: Iterar para generar todos los mapas (Años y Métricas)
+            # CORRECCIÓN: Iteración completa sobre todos los años y variables seleccionados
             for anio_mapa_str in sorted(anios_mapa):
                 anio_mapa = int(anio_mapa_str)
-                df_mapa = df[df['anio'] == anio_mapa]
+                df_mapa_anio = df[df['anio'] == anio_mapa]
                 
-                for metrica_activa in metricas_seleccionadas:
-                    st.markdown(f"<h3 style='text-align: center;'>🗺️ Distribución de {metrica_activa} ({anio_mapa})</h3>", unsafe_allow_html=True)
+                if df_mapa_anio.empty:
+                    st.warning(f"No hay datos registrados para el año {anio_mapa} con estos filtros.")
+                    continue
                     
-                    if df_mapa.empty:
-                        st.warning(f"No hay datos registrados para el año {anio_mapa} con estos filtros.")
-                        continue
+                for metrica_activa in metricas_seleccionadas:
+                    with st.container():
+                        st.markdown(f"<h3 style='text-align: center; color: #e2e8f0; margin-bottom: 20px;'>🗺️ Distribución de {metrica_activa} ({anio_mapa})</h3>", unsafe_allow_html=True)
                         
-                    if nivel == "Estatal":
-                        df_plot_map = df_mapa.groupby("estado")[metrica_activa].sum().reset_index()
-                        df_plot_map = df_plot_map[~df_plot_map["estado"].isin(["Nacional", "General"])]
-                        
-                        # CORRECCIÓN 1: Inyectar TODOS los estados/municipios para rellenar la silueta y no dejar el mapa mocho
-                        if estado_input == "Todos":
-                            all_regions = [f['properties'].get('NOMGEO', '') for f in geo_estados_data['features']]
-                            df_all = pd.DataFrame({"estado": all_regions})
-                        else:
-                            df_all = pd.DataFrame({"estado": [estado_input]})
+                        if nivel == "Estatal":
+                            df_plot_map = df_mapa_anio.groupby("estado")[metrica_activa].sum().reset_index()
+                            df_plot_map = df_plot_map[~df_plot_map["estado"].isin(["Nacional", "General"])]
                             
-                        df_plot_map = pd.merge(df_all, df_plot_map, on="estado", how='left').fillna({metrica_activa: 0})
-                        
-                        geojson_usar = geo_estados_data
-                        llave_geojson = "properties.NOMGEO"
-                        columna_df = "estado"
-                    else:
-                        df_plot_map = df_mapa.groupby("municipio")[metrica_activa].sum().reset_index()
-                        df_plot_map = df_plot_map[~df_plot_map["municipio"].isin(["Nacional", "General"])]
-                        
-                        # CORRECCIÓN 1 (Municipios)
-                        if estado_input == "Todos":
-                            all_regions = [f['properties'].get('NOMGEO', '') for f in geo_municipios_data['features']]
-                            df_all = pd.DataFrame({"municipio": all_regions})
-                        else:
-                            try:
-                                query_muns = f"SELECT nommunicipio FROM cat_municipio m JOIN cat_estado e ON m.idestado = e.idestado WHERE e.nomestado = '{estado_input}'"
-                                df_muns = conn.query(query_muns)
-                                df_all = pd.DataFrame({"municipio": df_muns['nommunicipio'].tolist()})
-                            except Exception:
-                                df_all = pd.DataFrame({"municipio": df_plot_map["municipio"].unique()})
+                            # CORRECCIÓN: Inyectar TODOS los estados con valor 0 para no dejar huecos
+                            if estado_input == "Todos":
+                                all_regions = [f['properties'].get('NOMGEO', '') for f in geo_estados_data['features']]
+                                df_all = pd.DataFrame({"estado": all_regions})
+                            else:
+                                df_all = pd.DataFrame({"estado": [estado_input]})
                                 
-                        df_plot_map = pd.merge(df_all, df_plot_map, on="municipio", how='left').fillna({metrica_activa: 0})
-                        
-                        geojson_usar = geo_municipios_data
-                        llave_geojson = "properties.NOMGEO" 
-                        columna_df = "municipio"
-
-                    try:
-                        # CORRECCIÓN 4: Cambio a color YlGnBu (Agradable y alto contraste)
-                        fig_mapa = px.choropleth(
-                            df_plot_map,
-                            geojson=geojson_usar,
-                            locations=columna_df,
-                            featureidkey=llave_geojson,
-                            color=metrica_activa,
-                            color_continuous_scale="YlGnBu",
-                            hover_name=columna_df
-                        )
-                        
-                        # CORRECCIÓN 3: Generación de Etiquetas Inteligentes Top 10 (Centros Geométricos)
-                        if tipo_etiqueta != "Ninguno":
-                            # Calculamos Top 10 que sean > 0 para evitar etiquetar regiones sin datos
-                            df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).head(10)
-                            lats, lons, texts = [], [], []
+                            df_plot_map = pd.merge(df_all, df_plot_map, on="estado", how='left').fillna({metrica_activa: 0})
                             
-                            is_avg = columnas_metricas[metrica_activa] in ['rendimiento', 'preciomediorural', 'indice_siniestralidad']
-                            fmt = ",.2f" if is_avg else ",.0f"
+                            geojson_usar = geo_estados_data
+                            llave_geojson = "properties.NOMGEO"
+                            columna_df = "estado"
+                        else:
+                            df_plot_map = df_mapa_anio.groupby("municipio")[metrica_activa].sum().reset_index()
+                            df_plot_map = df_plot_map[~df_plot_map["municipio"].isin(["Nacional", "General"])]
                             
-                            for _, row in df_top.iterrows():
-                                region_name = row[columna_df]
-                                val_num = row[metrica_activa]
-                                
-                                if tipo_etiqueta == "Ambos (Número y Nombre)":
-                                    txt = f"<b>{region_name}</b><br><b>{val_num:{fmt}}</b>"
-                                elif tipo_etiqueta == "Solo Nombre":
-                                    txt = f"<b>{region_name}</b>"
-                                else:
-                                    txt = f"<b>{val_num:{fmt}}</b>"
+                            # CORRECCIÓN: Inyectar TODOS los municipios con valor 0 para no dejar huecos
+                            if estado_input == "Todos":
+                                all_regions = [f['properties'].get('NOMGEO', '') for f in geo_municipios_data['features']]
+                                df_all = pd.DataFrame({"municipio": all_regions})
+                            else:
+                                try:
+                                    query_muns = f"SELECT nommunicipio FROM cat_municipio m JOIN cat_estado e ON m.idestado = e.idestado WHERE e.nomestado = '{estado_input}'"
+                                    df_muns = conn.query(query_muns)
+                                    df_all = pd.DataFrame({"municipio": df_muns['nommunicipio'].tolist()})
+                                except Exception:
+                                    df_all = pd.DataFrame({"municipio": df_plot_map["municipio"].unique()})
                                     
-                                for f in geojson_usar['features']:
-                                    if f['properties'].get('NOMGEO', '') == region_name:
-                                        geom = f['geometry']
-                                        coords = []
-                                        if geom['type'] == 'Polygon':
-                                            coords = geom['coordinates'][0]
-                                        elif geom['type'] == 'MultiPolygon':
-                                            coords = geom['coordinates'][0][0]
-                                            
-                                        if coords:
-                                            lons_p = [c[0] for c in coords]
-                                            lats_p = [c[1] for c in coords]
-                                            lons.append(sum(lons_p)/len(lons_p))
-                                            lats.append(sum(lats_p)/len(lats_p))
-                                            texts.append(txt)
-                                        break
+                            df_plot_map = pd.merge(df_all, df_plot_map, on="municipio", how='left').fillna({metrica_activa: 0})
+                            
+                            geojson_usar = geo_municipios_data
+                            llave_geojson = "properties.NOMGEO" 
+                            columna_df = "municipio"
+
+                        try:
+                            # CORRECCIÓN: Nueva escala de color agradable ("Teal")
+                            fig_mapa = px.choropleth(
+                                df_plot_map,
+                                geojson=geojson_usar,
+                                locations=columna_df,
+                                featureidkey=llave_geojson,
+                                color=metrica_activa,
+                                color_continuous_scale="Teal",
+                                hover_name=columna_df
+                            )
+                            
+                            # CORRECCIÓN: Mejora UI - Mostrar puntos en el mapa y generar tabla lateral
+                            df_top = pd.DataFrame()
+                            if tipo_etiqueta != "Ocultar":
+                                df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).head(10)
+                                lats, lons, texts = [], [], []
+                                
+                                is_avg = columnas_metricas[metrica_activa] in ['rendimiento', 'preciomediorural', 'indice_siniestralidad']
+                                fmt = ",.2f" if is_avg else ",.0f"
+                                
+                                for _, row in df_top.iterrows():
+                                    region_name = row[columna_df]
+                                    val_num = row[metrica_activa]
+                                    txt = f"{region_name}: {val_num:{fmt}}"
                                         
-                            if lats and lons:
-                                fig_mapa.add_scattergeo(
-                                    lon=lons, lat=lats, text=texts,
-                                    mode="text",
-                                    textfont=dict(color="#ffffff", size=11, family="Arial"),
-                                    hoverinfo="skip"
-                                )
+                                    for f in geojson_usar['features']:
+                                        if f['properties'].get('NOMGEO', '') == region_name:
+                                            geom = f['geometry']
+                                            coords = []
+                                            if geom['type'] == 'Polygon':
+                                                coords = geom['coordinates'][0]
+                                            elif geom['type'] == 'MultiPolygon':
+                                                coords = geom['coordinates'][0][0]
+                                                
+                                            if coords:
+                                                lons_p = [c[0] for c in coords]
+                                            lats_p = [c[1] for c in coords]
+                                                lons.append(sum(lons_p)/len(lons_p))
+                                                lats.append(sum(lats_p)/len(lats_p))
+                                                texts.append(txt)
+                                            break
+                                            
+                                if lats and lons:
+                                    fig_mapa.add_scattergeo(
+                                        lon=lons, lat=lats, 
+                                        hovertext=texts,
+                                        mode="markers",
+                                        marker=dict(size=12, color="#ef4444", line=dict(width=2, color="#ffffff")),
+                                        name="Top 10"
+                                    )
+                            
+                            # CORRECCIÓN: Fondo transparente (evita cuadro blanco) y altura panorámica rectangular
+                            fig_mapa.update_geos(
+                                fitbounds="locations", 
+                                visible=False, 
+                                projection_type="mercator",
+                                bgcolor='rgba(0,0,0,0)'
+                            )
+                            
+                            fig_mapa.update_layout(
+                                height=750, 
+                                margin={"r":0, "t":0, "l":0, "b":0},
+                                paper_bgcolor="#0b1325",
+                                plot_bgcolor="#0b1325",
+                                geo=dict(bgcolor='rgba(0,0,0,0)')
+                            )
+                            
+                            # Split layout para no saturar el mapa: 75% Mapa, 25% Tabla Ranking
+                            map_col, table_col = st.columns([3, 1])
+                            
+                            with map_col:
+                                st.plotly_chart(fig_mapa, use_container_width=True)
+                                
+                            with table_col:
+                                if tipo_etiqueta != "Ocultar" and not df_top.empty:
+                                    st.markdown(f"#### 🏆 Top 10 {columna_df.capitalize()}")
+                                    st.dataframe(df_top[[columna_df, metrica_activa]], hide_index=True, use_container_width=True)
+                                else:
+                                    st.write("")
+                                    
+                        except Exception as e:
+                            st.error(f"Error renderizando el mapa geoespacial: {e}")
                         
-                        fig_mapa.update_geos(fitbounds="locations", visible=False, projection_type="mercator")
-                        
-                        fig_mapa.update_layout(
-                            margin={"r":0, "t":0, "l":0, "b":0},
-                            paper_bgcolor="#0b1325",
-                            plot_bgcolor="#0b1325"
-                        )
-                        
-                        st.plotly_chart(fig_mapa, use_container_width=True)
-                    except Exception as e:
-                        st.error(f"Error renderizando el mapa geoespacial: {e}")
+                        st.markdown("<br><hr>", unsafe_allow_html=True)
 
 # ----------------- ANÁLISIS PROFUNDO (CLOUD RUN) -----------------
 if btn_ia_completo:
