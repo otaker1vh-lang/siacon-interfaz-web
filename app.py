@@ -406,12 +406,28 @@ if btn_mapa_rapido:
                         df_agrupado = df_mapa_anio.groupby(group_cols)[metrica_activa].sum().reset_index()
                         df_agrupado = df_agrupado[~df_agrupado[columna_df].isin(["Nacional", "General"])]
                         
-                        # Crear diccionario para mapear CVE_ENT a Nombre del Estado
+                        # Función auxiliar para estandarizar nombres de estados y evitar omisiones en el merge
+                        def limpiar_estado(nombre_estado):
+                            if not isinstance(nombre_estado, str): return ""
+                            n = nombre_estado.lower()
+                            import unicodedata
+                            n = ''.join(c for c in unicodedata.normalize('NFD', n) if unicodedata.category(c) != 'Mn')
+                            n = n.replace("veracruz de ignacio de la llave", "veracruz")
+                            n = n.replace("coahuila de zaragoza", "coahuila")
+                            n = n.replace("michoacan de ocampo", "michoacan")
+                            n = n.replace("estado de mexico", "mexico")
+                            return n.strip()
+                        
+                        # Estandarizar la columna 'estado' del DataFrame original para que cruce correctamente
+                        if nivel == "Municipal" and "estado" in df_agrupado.columns:
+                            df_agrupado["estado_limpio"] = df_agrupado["estado"].apply(limpiar_estado)
+
+                        # Crear diccionario para mapear el CVE_ENT del GeoJSON al nombre de estado del GeoJSON
                         mapa_estados = {}
                         if nivel == "Municipal" and geo_estados_data:
                             for f_est in geo_estados_data['features']:
-                                cve = f_est['properties'].get('CVE_ENT')
-                                nom = f_est['properties'].get('NOMGEO')
+                                cve = f_est['properties'].get('CVEGEO') or f_est['properties'].get('CVE_ENT')
+                                nom = f_est['properties'].get('NOMGEO') or f_est['properties'].get('NOM_ENT')
                                 if cve and nom:
                                     mapa_estados[cve] = nom
                                     
@@ -419,19 +435,20 @@ if btn_mapa_rapido:
                         for f in geojson_usar['features']:
                             record = {"id": f['id'], columna_df: f['properties'].get('NOMGEO', '')}
                             
-                            # Extraemos el estado cruzando el CVE_ENT del municipio con el diccionario de estados
+                            # Extraemos el estado para cruzar
                             if nivel == "Municipal":
-                                cve_ent = f['properties'].get('CVE_ENT')
-                                if cve_ent and cve_ent in mapa_estados:
-                                    record['estado'] = mapa_estados[cve_ent]
+                                cve_ent = f['properties'].get('CVE_ENT') or (f['properties'].get('CVEGEO', '')[:2] if len(f['properties'].get('CVEGEO', '')) >= 2 else None)
+                                estado_geo = mapa_estados.get(cve_ent, "")
+                                record['estado_geo'] = estado_geo
+                                record['estado_limpio'] = limpiar_estado(estado_geo)
                                     
                             geo_records.append(record)
                             
                         df_all = pd.DataFrame(geo_records)
                         
-                        # Realizamos el merge usando Municipio Y Estado para evitar duplicidad de homónimos
-                        if nivel == "Municipal" and "estado" in df_all.columns:
-                            df_plot_map = pd.merge(df_all, df_agrupado, on=[columna_df, "estado"], how='left').fillna({metrica_activa: 0})
+                        # Realizamos el merge usando Municipio Y la versión limpia del Estado
+                        if nivel == "Municipal" and "estado_limpio" in df_all.columns and "estado_limpio" in df_agrupado.columns:
+                            df_plot_map = pd.merge(df_all, df_agrupado, on=[columna_df, "estado_limpio"], how='left').fillna({metrica_activa: 0})
                         else:
                             df_plot_map = pd.merge(df_all, df_agrupado, on=columna_df, how='left').fillna({metrica_activa: 0})
                         
