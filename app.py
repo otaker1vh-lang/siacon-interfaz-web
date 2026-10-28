@@ -26,15 +26,15 @@ st.markdown("""
     div[role="listbox"] { background-color: #1e293b !important; }
     div[role="option"] { color: #ffffff !important; }
     
-    /* CORRECCIÓN: Estilo específico para cambiar el color del botón del mapa */
+    /* Botón Mapa Personalizado */
     button[kind="secondary"] {
-        background-color: #0284c7 !important;
+        background-color: #0f766e !important;
         color: white !important;
-        border: 1px solid #0369a1 !important;
+        border: 1px solid #0f766e !important;
     }
     button[kind="secondary"]:hover {
-        background-color: #0369a1 !important;
-        border: 1px solid #0c4a6e !important;
+        background-color: #0d9488 !important;
+        border: 1px solid #0d9488 !important;
     }
     
     .analisis-box { background-color: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #2E7D32; margin-top: 10px; font-size: 15px;}
@@ -319,7 +319,6 @@ with c10:
 with c11:
     anios_mapa = st.multiselect("📅 AÑOS MAPA", [str(y) for y in range(2015, 2026)], default=["2024"], disabled=not generar_mapa)
 with c12:
-    # Ajustamos las opciones al nuevo diseño limpio (Marcador + Tabla)
     tipo_etiqueta = st.selectbox("🏷️ TOP 10 DESTACADOS", ["Mostrar Puntos y Tabla", "Ocultar"], disabled=not generar_mapa)
 
 API_URL = "https://siacon-api-2m6lhlkauq-uc.a.run.app/consulta"
@@ -345,7 +344,6 @@ if btn_mapa_rapido:
         with st.spinner("🗺️ Renderizando mapas..."):
             st.markdown("---")
             
-            # CORRECCIÓN: Iteración completa sobre todos los años y variables seleccionados
             for anio_mapa_str in sorted(anios_mapa):
                 anio_mapa = int(anio_mapa_str)
                 df_mapa_anio = df[df['anio'] == anio_mapa]
@@ -362,14 +360,14 @@ if btn_mapa_rapido:
                             df_plot_map = df_mapa_anio.groupby("estado")[metrica_activa].sum().reset_index()
                             df_plot_map = df_plot_map[~df_plot_map["estado"].isin(["Nacional", "General"])]
                             
-                            # CORRECCIÓN: Inyectar TODOS los estados con valor 0 para no dejar huecos
+                            all_regions = list(set([f['properties'].get('NOMGEO', '') for f in geo_estados_data['features'] if f.get('properties')]))
                             if estado_input == "Todos":
-                                all_regions = [f['properties'].get('NOMGEO', '') for f in geo_estados_data['features']]
                                 df_all = pd.DataFrame({"estado": all_regions})
                             else:
                                 df_all = pd.DataFrame({"estado": [estado_input]})
                                 
                             df_plot_map = pd.merge(df_all, df_plot_map, on="estado", how='left').fillna({metrica_activa: 0})
+                            df_plot_map = df_plot_map.drop_duplicates(subset=["estado"])
                             
                             geojson_usar = geo_estados_data
                             llave_geojson = "properties.NOMGEO"
@@ -378,9 +376,8 @@ if btn_mapa_rapido:
                             df_plot_map = df_mapa_anio.groupby("municipio")[metrica_activa].sum().reset_index()
                             df_plot_map = df_plot_map[~df_plot_map["municipio"].isin(["Nacional", "General"])]
                             
-                            # CORRECCIÓN: Inyectar TODOS los municipios con valor 0 para no dejar huecos
+                            all_regions = list(set([f['properties'].get('NOMGEO', '') for f in geo_municipios_data['features'] if f.get('properties')]))
                             if estado_input == "Todos":
-                                all_regions = [f['properties'].get('NOMGEO', '') for f in geo_municipios_data['features']]
                                 df_all = pd.DataFrame({"municipio": all_regions})
                             else:
                                 try:
@@ -391,13 +388,13 @@ if btn_mapa_rapido:
                                     df_all = pd.DataFrame({"municipio": df_plot_map["municipio"].unique()})
                                     
                             df_plot_map = pd.merge(df_all, df_plot_map, on="municipio", how='left').fillna({metrica_activa: 0})
+                            df_plot_map = df_plot_map.drop_duplicates(subset=["municipio"])
                             
                             geojson_usar = geo_municipios_data
                             llave_geojson = "properties.NOMGEO" 
                             columna_df = "municipio"
 
                         try:
-                            # CORRECCIÓN: Nueva escala de color agradable ("Teal")
                             fig_mapa = px.choropleth(
                                 df_plot_map,
                                 geojson=geojson_usar,
@@ -408,7 +405,6 @@ if btn_mapa_rapido:
                                 hover_name=columna_df
                             )
                             
-                            # CORRECCIÓN: Mejora UI - Mostrar puntos en el mapa y generar tabla lateral
                             df_top = pd.DataFrame()
                             if tipo_etiqueta != "Ocultar":
                                 df_top = df_plot_map[df_plot_map[metrica_activa] > 0].sort_values(metrica_activa, ascending=False).head(10)
@@ -444,11 +440,10 @@ if btn_mapa_rapido:
                                         lon=lons, lat=lats, 
                                         hovertext=texts,
                                         mode="markers",
-                                        marker=dict(size=12, color="#ef4444", line=dict(width=2, color="#ffffff")),
+                                        marker=dict(size=5, color="#ef4444", line=dict(width=1, color="#ffffff")),
                                         name="Top 10"
                                     )
                             
-                            # CORRECCIÓN: Fondo transparente (evita cuadro blanco) y altura panorámica rectangular
                             fig_mapa.update_geos(
                                 fitbounds="locations", 
                                 visible=False, 
@@ -457,14 +452,13 @@ if btn_mapa_rapido:
                             )
                             
                             fig_mapa.update_layout(
-                                height=750, 
+                                height=550,
                                 margin={"r":0, "t":0, "l":0, "b":0},
                                 paper_bgcolor="#0b1325",
                                 plot_bgcolor="#0b1325",
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            # Split layout para no saturar el mapa: 75% Mapa, 25% Tabla Ranking
                             map_col, table_col = st.columns([3, 1])
                             
                             with map_col:
