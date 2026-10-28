@@ -507,14 +507,14 @@ if btn_mapa_rapido:
                             )
                             
                             fig_mapa.update_layout(
-                                height=380, # CAMBIO 2: Reducción de altura a 380px para forzar el marco rectangular
+                                height=550, # CAMBIO 2: Reducción de altura a 380px para forzar el marco rectangular
                                 margin={"r":0, "t":0, "l":0, "b":0},
                                 paper_bgcolor="#0b1325",
                                 plot_bgcolor="#0b1325",
                                 geo=dict(bgcolor='rgba(0,0,0,0)')
                             )
                             
-                            map_col, table_col = st.columns([4.2, 1.0])
+                            map_col, table_col = st.columns([4.5, 1.5])
                             
                             with map_col:
                                 st.plotly_chart(fig_mapa, use_container_width=True)
